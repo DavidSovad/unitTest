@@ -478,8 +478,8 @@ function docxHeader(sessionName, hasLogo) {
   xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
   xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"`;
 
-  const logoW = 1800000; // 5 cm
-  const logoH =  720000; // 2 cm
+  const logoW = 1080000; // 3 cm  — ratio quasi-carré (logo Yunit MagellanPartners)
+  const logoH =  936000; // 2.6 cm
 
   const logoRun = hasLogo
     ? `<w:r><w:drawing>
