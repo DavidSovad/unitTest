@@ -1,96 +1,131 @@
 'use strict';
 
-// ─── Session state ────────────────────────────────────────────────────────────
+// ─── État léger en mémoire ────────────────────────────────────────────────────
+// NOTE : le service worker MV3 PEUT être suspendu à tout moment.
+// Tout ce qui est critique (events, recording) est stocké dans chrome.storage.local.
 const state = {
-  recording: false,
-  sessionName: '',
-  events: [],
-  counter: 0,
-  activeTabId: null,
+  activeTabId:    null,
   activeWindowId: null
 };
 
 // ─── Message router ───────────────────────────────────────────────────────────
-// IMPORTANT : en MV3, sendResponse doit être appelé de façon SYNCHRONE
-// (avant tout await). Le port se ferme sinon. On répond immédiatement
-// et on fait le travail async après.
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   switch (msg.type) {
 
-    case 'TT_START':
-      // Répondre immédiatement pour éviter "port closed"
-      state.recording = true;
-      state.sessionName = msg.sessionName || 'Session ' + new Date().toLocaleString('fr-FR');
-      state.events = [];
-      state.counter = 0;
+    // ── Démarrer l'enregistrement ─────────────────────────────────────────────
+    case 'TT_START': {
+      const sessionName = msg.sessionName || 'Session ' + new Date().toLocaleString('fr-FR');
+
+      // Persister dans le storage AVANT de broadcaster (les iframes liront ce flag)
+      chrome.storage.local.set({
+        tt_recording:     true,
+        tt_session_name:  sessionName,
+        tt_events:        [],
+        tt_event_counter: 0
+      });
+
+      // Répondre IMMÉDIATEMENT (obligatoire en MV3 pour éviter "port closed")
       sendResponse({ ok: true });
-      // Travail async après la réponse
+
+      // Travail async APRÈS réponse
       chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
         const tab = tabs[0];
         if (!tab) return;
-        state.activeTabId  = tab.id;
+        state.activeTabId    = tab.id;
         state.activeWindowId = tab.windowId;
         chrome.action.setBadgeText({ text: 'REC', tabId: tab.id });
         chrome.action.setBadgeBackgroundColor({ color: '#e74c3c', tabId: tab.id });
+        // Broadcaster TT_START dans TOUTES les frames (iframes ServiceNow incluses)
         broadcastToAllFrames(tab.id, { type: 'TT_START' });
       });
       break;
+    }
 
-    case 'TT_STOP':
-      // Répondre immédiatement
-      state.recording = false;
-      const finalCount = state.events.length;
-      sendResponse({ ok: true, count: finalCount });
-      // Travail async après la réponse
+    // ── Arrêter l'enregistrement ──────────────────────────────────────────────
+    case 'TT_STOP': {
+      // Répondre IMMÉDIATEMENT
+      sendResponse({ ok: true });
+
       if (state.activeTabId) {
         chrome.action.setBadgeText({ text: '', tabId: state.activeTabId });
         broadcastToAllFrames(state.activeTabId, { type: 'TT_STOP' });
       }
-      chrome.storage.local.set({
-        tt_events:      state.events,
-        tt_session_name: state.sessionName,
-        tt_stopped_at:  new Date().toISOString(),
-        tt_count:       finalCount
-      }, () => {
-        chrome.tabs.create({ url: chrome.runtime.getURL('recap.html') });
+
+      // Lire les événements depuis le storage (résistant aux redémarrages SW)
+      chrome.storage.local.get(['tt_events', 'tt_session_name'], (data) => {
+        const events = data.tt_events || [];
+        chrome.storage.local.set({
+          tt_recording:   false,
+          tt_stopped_at:  new Date().toISOString(),
+          tt_count:       events.length,
+          tt_session_name: data.tt_session_name || 'Session'
+        }, () => {
+          chrome.tabs.create({ url: chrome.runtime.getURL('recap.html') });
+        });
       });
       break;
+    }
 
+    // ── Événement reçu depuis une page/iframe ─────────────────────────────────
+    // On NE vérifie PAS state.recording ici — le SW peut avoir redémarré
+    // et perdu cette valeur. Le content script ne send TT_EVENT que si
+    // _recording est true côté page, donc c'est fiable.
     case 'TT_EVENT':
-      if (state.recording) handleEvent(msg, sender);
+      handleEvent(msg, sender);
       break;
 
+    // ── Statut (lu par le popup pour le compteur) ─────────────────────────────
     case 'TT_STATUS':
-      sendResponse({ recording: state.recording, count: state.events.length });
-      break;
+      chrome.storage.local.get(['tt_recording', 'tt_event_counter'], (data) => {
+        sendResponse({
+          recording: data.tt_recording  || false,
+          count:     data.tt_event_counter || 0
+        });
+      });
+      return true; // réponse asynchrone
   }
 });
 
-// ─── Enregistrer un événement + capture d'écran ───────────────────────────────
+// ─── Enregistrement d'un événement + capture d'écran ─────────────────────────
 function handleEvent(msg, sender) {
   const windowId = sender.tab?.windowId;
   if (!windowId) return;
 
-  // Capture de l'onglet visible (JPEG pour économiser l'espace)
-  chrome.tabs.captureVisibleTab(windowId, { format: 'jpeg', quality: 65 }, (dataUrl) => {
+  // Capturer l'onglet visible JPEG (plus léger que PNG)
+  chrome.tabs.captureVisibleTab(windowId, { format: 'jpeg', quality: 65 }, (screenshot) => {
     if (chrome.runtime.lastError) {
       console.warn('[TestTracer BG] Screenshot:', chrome.runtime.lastError.message);
     }
-    state.counter++;
-    state.events.push({
-      id: state.counter,
-      eventType: msg.eventType,
-      description: msg.description,
-      url: msg.url,
-      selector: msg.selector || '',
-      timestamp: msg.timestamp || new Date().toISOString(),
-      screenshot: dataUrl || null
+
+    // Append dans le storage (pattern read-modify-write, résistant aux redémarrages SW)
+    chrome.storage.local.get(['tt_events', 'tt_event_counter'], (data) => {
+      if (chrome.runtime.lastError) return;
+
+      const events  = data.tt_events        || [];
+      const counter = (data.tt_event_counter || 0) + 1;
+
+      events.push({
+        id:          counter,
+        eventType:   msg.eventType,
+        description: msg.description  || '',
+        url:         msg.url          || '',
+        selector:    msg.selector     || '',
+        timestamp:   msg.timestamp    || new Date().toISOString(),
+        screenshot:  screenshot       || null
+      });
+
+      chrome.storage.local.set({ tt_events: events, tt_event_counter: counter }, () => {
+        if (chrome.runtime.lastError) {
+          console.error('[TestTracer BG] Storage error:', chrome.runtime.lastError.message);
+        } else {
+          console.log(`[TestTracer BG] #${counter} [${msg.eventType}] ${msg.description}`);
+        }
+      });
     });
-    console.log(`[TestTracer BG] #${state.counter} [${msg.eventType}] ${msg.description}`);
   });
 }
 
-// ─── Broadcast vers toutes les frames ────────────────────────────────────────
+// ─── Broadcast dans toutes les frames d'un onglet ────────────────────────────
 async function broadcastToAllFrames(tabId, message) {
   let frames;
   try {

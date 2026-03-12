@@ -7,10 +7,21 @@ let _lastRightClickTime = 0;
 let _lastScrollY = window.scrollY || 0;
 let _initialized = false;
 
+// ─── Init ─────────────────────────────────────────────────────────────────────
 function init() {
   if (_initialized) return;
   _initialized = true;
   console.log('[TestTracer] content.js injecté sur', location.href);
+
+  // ── Vérifier immédiatement si une session est déjà en cours ───────────────
+  // (cas des iframes qui s'injectent APRÈS que TT_START a été broadcasté)
+  chrome.storage.local.get('tt_recording', (data) => {
+    if (data.tt_recording === true) {
+      _recording = true;
+      console.log('[TestTracer] ▶ Session déjà en cours — enregistrement activé');
+      showBadge();
+    }
+  });
 
   // ── Messages du background ─────────────────────────────────────────────────
   chrome.runtime.onMessage.addListener((msg) => {
@@ -26,48 +37,56 @@ function init() {
     }
   });
 
-  // ── Clic gauche ────────────────────────────────────────────────────────────
+  attachListeners();
+  console.log('[TestTracer] ✅ Prêt — en attente de TT_START');
+}
+
+// ─── Attacher tous les écouteurs ──────────────────────────────────────────────
+function attachListeners() {
+
+  // ── Clic gauche ─────────────────────────────────────────────────────────────
   document.addEventListener('click', (e) => {
     if (!_recording || e.button !== 0) return;
+    // Ne pas capturer les clics qui font partie d'un double-clic
     flash(e.target, '#27ae60');
     sendEvent('click', `Clic sur "${desc(e.target)}"`, e.target);
   }, { capture: true, passive: true });
 
-  // ── Clic droit — mousedown button=2 en capture (impossible à bloquer par la page) ──
+  // ── Clic droit — mousedown button=2 en CAPTURE (avant tout handler de page) ─
+  // C'est la seule façon fiable sur les SaaS qui appellent preventDefault()
   document.addEventListener('mousedown', (e) => {
     if (!_recording) return;
     const now = Date.now();
 
     if (e.button === 2) {
-      // Garde anti-doublon avec contextmenu
-      if (now - _lastRightClickTime < 250) return;
+      if (now - _lastRightClickTime < 300) return; // anti-doublon avec contextmenu
       _lastRightClickTime = now;
-      flash(e.target, '#e74c3c');
+      flash(e.target, '#ef4444');
       sendEvent('right-click', `Clic droit sur "${desc(e.target)}"`, e.target);
     } else if (e.button === 1) {
-      flash(e.target, '#95a5a6');
+      flash(e.target, '#94a3b8');
       sendEvent('middle-click', `Clic molette sur "${desc(e.target)}"`, e.target);
     }
   }, { capture: true, passive: true });
 
-  // Filet de sécurité contextmenu (si mousedown a raté)
+  // Filet de sécurité contextmenu (si mousedown n'a pas pu capturer)
   document.addEventListener('contextmenu', (e) => {
     if (!_recording) return;
     const now = Date.now();
-    if (now - _lastRightClickTime < 250) return; // déjà capturé par mousedown
+    if (now - _lastRightClickTime < 300) return; // déjà capturé par mousedown
     _lastRightClickTime = now;
-    flash(e.target, '#e74c3c');
+    flash(e.target, '#ef4444');
     sendEvent('right-click', `Clic droit sur "${desc(e.target)}"`, e.target);
-  }, { capture: true, passive: true });
+  }, { capture: true });
 
-  // ── Double-clic ────────────────────────────────────────────────────────────
+  // ── Double-clic ─────────────────────────────────────────────────────────────
   document.addEventListener('dblclick', (e) => {
     if (!_recording) return;
-    flash(e.target, '#e67e22');
+    flash(e.target, '#f97316');
     sendEvent('double-click', `Double-clic sur "${desc(e.target)}"`, e.target);
   }, { capture: true, passive: true });
 
-  // ── Saisie dans champs texte (debounce 800ms) ──────────────────────────────
+  // ── Saisie texte (debounce 800ms) ───────────────────────────────────────────
   document.addEventListener('input', (e) => {
     if (!_recording) return;
     const el = e.target;
@@ -80,13 +99,13 @@ function init() {
     }, 800);
   }, { capture: true, passive: true });
 
-  // ── Sélection / checkbox / radio ───────────────────────────────────────────
+  // ── Sélection / checkbox / radio ────────────────────────────────────────────
   document.addEventListener('change', (e) => {
     if (!_recording) return;
     const el = e.target;
     if (el.tagName === 'SELECT') {
-      const selected = el.options[el.selectedIndex]?.text || el.value;
-      sendEvent('select', `Sélection "${selected}" dans "${desc(el)}"`, el);
+      const sel = el.options[el.selectedIndex]?.text || el.value;
+      sendEvent('select', `Sélection "${sel}" dans "${desc(el)}"`, el);
     } else if (el.type === 'checkbox') {
       sendEvent('checkbox', `${el.checked ? '☑ Coché' : '☐ Décoché'} "${desc(el)}"`, el);
     } else if (el.type === 'radio') {
@@ -94,7 +113,7 @@ function init() {
     }
   }, { capture: true, passive: true });
 
-  // ── Scroll significatif (throttle 500ms, seuil 200px) ─────────────────────
+  // ── Scroll significatif (seuil 200px, throttle 500ms) ───────────────────────
   window.addEventListener('scroll', () => {
     if (!_recording) return;
     clearTimeout(_scrollTimer);
@@ -107,59 +126,55 @@ function init() {
     }, 500);
   }, { capture: true, passive: true });
 
-  // ── Navigation / changement d'URL ──────────────────────────────────────────
+  // ── Navigation / changements d'URL ──────────────────────────────────────────
   let _lastUrl = location.href;
 
   function onUrlChange() {
     if (location.href !== _lastUrl) {
-      if (_recording) {
-        sendEvent('navigation', `Navigation vers "${location.href}"`, document.body);
-      }
+      if (_recording) sendEvent('navigation', `Navigation vers "${location.href}"`, document.body);
       _lastUrl = location.href;
     }
   }
 
-  // Monkey-patch history API
-  const origPush = history.pushState.bind(history);
+  // Monkey-patch history API (SPAs)
+  const origPush    = history.pushState.bind(history);
   const origReplace = history.replaceState.bind(history);
-  history.pushState = (...a) => { origPush(...a); onUrlChange(); };
+  history.pushState    = (...a) => { origPush(...a);    onUrlChange(); };
   history.replaceState = (...a) => { origReplace(...a); onUrlChange(); };
   window.addEventListener('popstate', onUrlChange);
 
-  // MutationObserver pour SPA qui ne passent pas par history
+  // MutationObserver pour SPA sans history API
   new MutationObserver(onUrlChange).observe(
     document.documentElement,
     { subtree: true, childList: true }
   );
-
-  console.log('[TestTracer] ✅ Prêt — en attente de TT_START');
 }
 
 // ─── Envoyer un événement au background ──────────────────────────────────────
 function sendEvent(eventType, description, el) {
   console.log(`[TestTracer] → ${eventType}: ${description}`);
   chrome.runtime.sendMessage({
-    type: 'TT_EVENT',
+    type:        'TT_EVENT',
     eventType,
     description,
-    url: location.href,
-    selector: getSelector(el),
-    timestamp: new Date().toISOString()
-  }).catch(() => {}); // ignore si le background n'est pas prêt
+    url:         location.href,
+    selector:    getSelector(el),
+    timestamp:   new Date().toISOString()
+  }).catch(() => {}); // ignorer si le SW n'est pas prêt
 }
 
 // ─── Description lisible d'un élément ────────────────────────────────────────
 function desc(el) {
   if (!el || el === document.body || el === document.documentElement) return 'page';
   const s =
-    el.getAttribute?.('aria-label') ||
-    el.getAttribute?.('title') ||
-    el.getAttribute?.('placeholder') ||
-    el.getAttribute?.('alt') ||
+    el.getAttribute?.('aria-label')  ||
+    el.getAttribute?.('title')        ||
+    el.getAttribute?.('placeholder')  ||
+    el.getAttribute?.('alt')          ||
     (el.innerText || el.textContent || '').trim().slice(0, 60) ||
-    el.getAttribute?.('name') ||
-    el.getAttribute?.('id') ||
-    el.tagName?.toLowerCase() ||
+    el.getAttribute?.('name')         ||
+    el.getAttribute?.('id')           ||
+    el.tagName?.toLowerCase()         ||
     'élément';
   return s.replace(/\s+/g, ' ').trim().slice(0, 60);
 }
@@ -178,13 +193,13 @@ function getSelector(el) {
       parts.unshift(part);
       node = node.parentElement;
     }
-    return parts.join(' > ');
+    return parts.join(' > ') || el.tagName?.toLowerCase() || 'unknown';
   } catch (e) {
     return el.tagName?.toLowerCase() || 'unknown';
   }
 }
 
-// ─── Flash visuel sur l'élément ciblé ────────────────────────────────────────
+// ─── Flash visuel coloré sur l'élément ciblé ─────────────────────────────────
 function flash(el, color) {
   if (!el || el === document.body || el === document.documentElement) return;
   try {
@@ -201,20 +216,35 @@ function flash(el, color) {
 // ─── Badge REC flottant ───────────────────────────────────────────────────────
 function showBadge() {
   if (document.getElementById('tt-rec-badge')) return;
+
+  // Injecter le style d'animation (ne peut pas être inline en MV3)
+  if (!document.getElementById('tt-badge-style')) {
+    const style = document.createElement('style');
+    style.id = 'tt-badge-style';
+    style.textContent = '@keyframes tt-blink{0%,100%{opacity:1}50%{opacity:.3}}';
+    (document.head || document.documentElement).appendChild(style);
+  }
+
   const d = document.createElement('div');
   d.id = 'tt-rec-badge';
   d.textContent = '⏺ REC';
   Object.assign(d.style, {
-    position: 'fixed', top: '8px', right: '8px', zIndex: '2147483647',
-    background: 'rgba(231,76,60,0.9)', color: '#fff', padding: '4px 10px',
-    borderRadius: '4px', fontSize: '11px', fontFamily: 'monospace',
-    fontWeight: 'bold', pointerEvents: 'none', boxShadow: '0 2px 6px rgba(0,0,0,.4)',
-    animation: 'tt-pulse 1.2s infinite'
+    position:   'fixed',
+    top:        '8px',
+    right:      '8px',
+    zIndex:     '2147483647',
+    background: 'rgba(239,68,68,0.92)',
+    color:      '#fff',
+    padding:    '4px 10px',
+    borderRadius: '4px',
+    fontSize:   '11px',
+    fontFamily: 'monospace',
+    fontWeight: 'bold',
+    pointerEvents: 'none',
+    boxShadow:  '0 2px 6px rgba(0,0,0,.4)',
+    animation:  'tt-blink 1.2s infinite'
   });
-  const style = document.createElement('style');
-  style.textContent = '@keyframes tt-pulse{0%,100%{opacity:1}50%{opacity:.4}}';
-  document.head?.appendChild(style);
-  document.body?.appendChild(d);
+  (document.body || document.documentElement).appendChild(d);
 }
 
 function removeBadge() {
