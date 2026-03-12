@@ -11,15 +11,50 @@ const state = {
 };
 
 // ─── Message router ───────────────────────────────────────────────────────────
+// IMPORTANT : en MV3, sendResponse doit être appelé de façon SYNCHRONE
+// (avant tout await). Le port se ferme sinon. On répond immédiatement
+// et on fait le travail async après.
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   switch (msg.type) {
+
     case 'TT_START':
-      handleStart(msg, sendResponse);
-      return true;
+      // Répondre immédiatement pour éviter "port closed"
+      state.recording = true;
+      state.sessionName = msg.sessionName || 'Session ' + new Date().toLocaleString('fr-FR');
+      state.events = [];
+      state.counter = 0;
+      sendResponse({ ok: true });
+      // Travail async après la réponse
+      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+        const tab = tabs[0];
+        if (!tab) return;
+        state.activeTabId  = tab.id;
+        state.activeWindowId = tab.windowId;
+        chrome.action.setBadgeText({ text: 'REC', tabId: tab.id });
+        chrome.action.setBadgeBackgroundColor({ color: '#e74c3c', tabId: tab.id });
+        broadcastToAllFrames(tab.id, { type: 'TT_START' });
+      });
+      break;
 
     case 'TT_STOP':
-      handleStop(sendResponse);
-      return true;
+      // Répondre immédiatement
+      state.recording = false;
+      const finalCount = state.events.length;
+      sendResponse({ ok: true, count: finalCount });
+      // Travail async après la réponse
+      if (state.activeTabId) {
+        chrome.action.setBadgeText({ text: '', tabId: state.activeTabId });
+        broadcastToAllFrames(state.activeTabId, { type: 'TT_STOP' });
+      }
+      chrome.storage.local.set({
+        tt_events:      state.events,
+        tt_session_name: state.sessionName,
+        tt_stopped_at:  new Date().toISOString(),
+        tt_count:       finalCount
+      }, () => {
+        chrome.tabs.create({ url: chrome.runtime.getURL('recap.html') });
+      });
+      break;
 
     case 'TT_EVENT':
       if (state.recording) handleEvent(msg, sender);
@@ -30,54 +65,6 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       break;
   }
 });
-
-// ─── Start recording ──────────────────────────────────────────────────────────
-async function handleStart(msg, sendResponse) {
-  state.recording = true;
-  state.sessionName = msg.sessionName || 'Session ' + new Date().toLocaleString('fr-FR');
-  state.events = [];
-  state.counter = 0;
-
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  if (!tab) {
-    sendResponse({ ok: false, error: 'Aucun onglet actif trouvé' });
-    return;
-  }
-  state.activeTabId = tab.id;
-  state.activeWindowId = tab.windowId;
-
-  // Badge rouge REC
-  chrome.action.setBadgeText({ text: 'REC', tabId: tab.id });
-  chrome.action.setBadgeBackgroundColor({ color: '#e74c3c', tabId: tab.id });
-
-  // Injecter dans toutes les frames (y compris iframes ServiceNow)
-  await broadcastToAllFrames(tab.id, { type: 'TT_START' });
-
-  sendResponse({ ok: true });
-}
-
-// ─── Stop recording ───────────────────────────────────────────────────────────
-async function handleStop(sendResponse) {
-  state.recording = false;
-
-  if (state.activeTabId) {
-    chrome.action.setBadgeText({ text: '', tabId: state.activeTabId });
-    await broadcastToAllFrames(state.activeTabId, { type: 'TT_STOP' });
-  }
-
-  // Sauvegarde dans le storage
-  await chrome.storage.local.set({
-    tt_events: state.events,
-    tt_session_name: state.sessionName,
-    tt_stopped_at: new Date().toISOString(),
-    tt_count: state.counter
-  });
-
-  // Ouvrir l'onglet de récapitulatif
-  await chrome.tabs.create({ url: chrome.runtime.getURL('recap.html') });
-
-  sendResponse({ ok: true, count: state.events.length });
-}
 
 // ─── Enregistrer un événement + capture d'écran ───────────────────────────────
 function handleEvent(msg, sender) {
