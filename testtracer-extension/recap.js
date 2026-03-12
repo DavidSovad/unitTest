@@ -44,6 +44,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Boutons export
   document.getElementById('btn-zip').addEventListener('click',   doExportZip);
+  document.getElementById('btn-excel').addEventListener('click', doExportExcel);
   document.getElementById('btn-docx').addEventListener('click',  doExportDocx);
   document.getElementById('btn-html').addEventListener('click',  doExportHtml);
   document.getElementById('btn-md').addEventListener('click',    doExportMarkdown);
@@ -109,6 +110,16 @@ function closeLightbox() {
   document.getElementById('lightbox-img').src = '';
 }
 
+// ─── Export Excel (.xlsx) ────────────────────────────────────────────────────
+function doExportExcel() {
+  const bytes = buildXlsx(_events, _sessionName);
+  downloadBlob(
+    bytes,
+    `testtracer-${dateSlug()}.xlsx`,
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+  );
+}
+
 // ─── Export ZIP (DOCX + HTML + Markdown + screenshots) ───────────────────────
 async function doExportZip() {
   const zip      = new ZipBuilder();
@@ -117,6 +128,10 @@ async function doExportZip() {
   // DOCX
   const docxBytes = buildDocx(_events, _sessionName);
   zip.addFile('rapport.docx', docxBytes);
+
+  // Excel
+  const xlsxBytes = buildXlsx(_events, _sessionName);
+  zip.addFile('rapport.xlsx', xlsxBytes);
 
   // HTML autonome
   zip.addFile('rapport.html', buildHtmlReport(_events, _sessionName));

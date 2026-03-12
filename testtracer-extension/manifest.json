@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "TestTracer Recorder",
-  "version": "2.0",
-  "description": "Enregistre automatiquement les actions utilisateur (clics, saisies, navigations) avec captures d'écran — compatible ServiceNow et iframes",
+  "version": "2.1",
+  "description": "Enregistre automatiquement les actions utilisateur (clics, saisies, navigations) avec captures d'écran — export Excel/DOCX/ZIP — compatible ServiceNow et iframes",
   "permissions": [
     "activeTab",
     "tabs",

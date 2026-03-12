@@ -314,3 +314,258 @@ function xmlEsc(s) {
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&apos;');
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// XLSX (Excel) BUILDER — pur JavaScript, sans dépendance externe
+// Format : Office Open XML (.xlsx = ZIP de fichiers XML)
+// Colonnes : N° | Action | Description | Lien | Image (vignette intégrée)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * buildXlsx(events, sessionName) → Uint8Array
+ * Génère un fichier .xlsx complet avec captures d'écran intégrées dans la
+ * colonne Image, une image par ligne.
+ */
+function buildXlsx(events, sessionName) {
+  const zip = new ZipBuilder();
+
+  // ── Indexer les images (événements avec screenshot) ──────────────────────
+  // imgMap : index dans events → numéro d'image 1-based
+  const imgMap = new Map();
+  let imgCount = 0;
+  events.forEach((ev, i) => {
+    if (ev.screenshot) {
+      imgCount++;
+      imgMap.set(i, imgCount);
+      const ext = ev.screenshot.startsWith('data:image/png') ? 'png' : 'jpeg';
+      zip.addBase64(`xl/media/image${imgCount}.${ext}`, ev.screenshot);
+    }
+  });
+
+  // ── [Content_Types].xml ──────────────────────────────────────────────────
+  zip.addFile('[Content_Types].xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels"  ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml"   ContentType="application/xml"/>
+  <Default Extension="jpeg"  ContentType="image/jpeg"/>
+  <Default Extension="png"   ContentType="image/png"/>
+  <Override PartName="/xl/workbook.xml"
+    ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+  <Override PartName="/xl/worksheets/sheet1.xml"
+    ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+  <Override PartName="/xl/styles.xml"
+    ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>
+  ${imgCount > 0
+    ? '<Override PartName="/xl/drawings/drawing1.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/>'
+    : ''}
+</Types>`);
+
+  // ── _rels/.rels ──────────────────────────────────────────────────────────
+  zip.addFile('_rels/.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1"
+    Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument"
+    Target="xl/workbook.xml"/>
+</Relationships>`);
+
+  // ── xl/workbook.xml ──────────────────────────────────────────────────────
+  const sheetName = xmlEsc(sessionName.slice(0, 31)); // max 31 chars for sheet name
+  zip.addFile('xl/workbook.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+  xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <sheets>
+    <sheet name="${sheetName}" sheetId="1" r:id="rId1"/>
+  </sheets>
+</workbook>`);
+
+  // ── xl/_rels/workbook.xml.rels ───────────────────────────────────────────
+  zip.addFile('xl/_rels/workbook.xml.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1"
+    Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet"
+    Target="worksheets/sheet1.xml"/>
+  <Relationship Id="rId2"
+    Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles"
+    Target="styles.xml"/>
+</Relationships>`);
+
+  // ── xl/styles.xml ────────────────────────────────────────────────────────
+  zip.addFile('xl/styles.xml', xlsxStyles());
+
+  // ── xl/worksheets/sheet1.xml ─────────────────────────────────────────────
+  zip.addFile('xl/worksheets/sheet1.xml', xlsxSheet(events, imgMap, imgCount > 0));
+
+  // ── Fichiers drawing (uniquement si des images existent) ─────────────────
+  if (imgCount > 0) {
+    // Référence drawing depuis la feuille
+    zip.addFile('xl/worksheets/_rels/sheet1.xml.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1"
+    Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing"
+    Target="../drawings/drawing1.xml"/>
+</Relationships>`);
+
+    // Ancres des images
+    zip.addFile('xl/drawings/drawing1.xml', xlsxDrawing(events, imgMap));
+
+    // Relations images du drawing
+    zip.addFile('xl/drawings/_rels/drawing1.xml.rels', xlsxDrawingRels(events, imgMap));
+  }
+
+  return zip.build();
+}
+
+// ─── Feuille de calcul ────────────────────────────────────────────────────────
+function xlsxSheet(events, imgMap, hasDrawing) {
+  const TYPE_LABELS = {
+    'click': 'Clic', 'right-click': 'Clic droit', 'double-click': 'Double-clic',
+    'middle-click': 'Clic molette', 'input': 'Saisie', 'select': 'Sélection',
+    'checkbox': 'Checkbox', 'radio': 'Radio', 'scroll': 'Défilement',
+    'navigation': 'Navigation'
+  };
+
+  // Ligne d'en-tête (style 1 = gras + fond bleu)
+  let rows = `<row r="1">
+      <c r="A1" s="1" t="inlineStr"><is><t>N°</t></is></c>
+      <c r="B1" s="1" t="inlineStr"><is><t>Action</t></is></c>
+      <c r="C1" s="1" t="inlineStr"><is><t>Description</t></is></c>
+      <c r="D1" s="1" t="inlineStr"><is><t>Lien</t></is></c>
+      <c r="E1" s="1" t="inlineStr"><is><t>Image</t></is></c>
+    </row>`;
+
+  events.forEach((ev, idx) => {
+    const r   = idx + 2; // ligne Excel (1-indexée, skip header)
+    const lbl = TYPE_LABELS[ev.eventType] || ev.eventType;
+    rows += `
+    <row r="${r}" ht="113" customHeight="1">
+      <c r="A${r}" t="n"><v>${ev.id}</v></c>
+      <c r="B${r}" s="2" t="inlineStr"><is><t>${xmlEsc(lbl)}</t></is></c>
+      <c r="C${r}" s="2" t="inlineStr"><is><t>${xmlEsc(ev.description)}</t></is></c>
+      <c r="D${r}" s="3" t="inlineStr"><is><t>${xmlEsc(ev.url)}</t></is></c>
+      <c r="E${r}" t="inlineStr"><is><t></t></is></c>
+    </row>`;
+  });
+
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+  xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <sheetFormatPr defaultRowHeight="15"/>
+  <cols>
+    <col min="1" max="1" width="6"  customWidth="1"/>
+    <col min="2" max="2" width="14" customWidth="1"/>
+    <col min="3" max="3" width="50" customWidth="1"/>
+    <col min="4" max="4" width="55" customWidth="1"/>
+    <col min="5" max="5" width="38" customWidth="1"/>
+  </cols>
+  <sheetData>
+    ${rows}
+  </sheetData>
+  ${hasDrawing ? '<drawing r:id="rId1"/>' : ''}
+</worksheet>`;
+}
+
+// ─── Styles Excel ─────────────────────────────────────────────────────────────
+function xlsxStyles() {
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <fonts count="2">
+    <font><sz val="11"/><name val="Calibri"/></font>
+    <font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font>
+  </fonts>
+  <fills count="3">
+    <fill><patternFill patternType="none"/></fill>
+    <fill><patternFill patternType="gray125"/></fill>
+    <fill><patternFill patternType="solid">
+      <fgColor rgb="FF1D4ED8"/><bgColor indexed="64"/>
+    </patternFill></fill>
+  </fills>
+  <borders count="1">
+    <border><left/><right/><top/><bottom/><diagonal/></border>
+  </borders>
+  <cellStyleXfs count="1">
+    <xf numFmtId="0" fontId="0" fillId="0" borderId="0"/>
+  </cellStyleXfs>
+  <cellXfs count="4">
+    <!-- 0 : défaut -->
+    <xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>
+    <!-- 1 : en-tête (gras blanc sur bleu, centré) -->
+    <xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0"
+        applyFont="1" applyFill="1" applyAlignment="1">
+      <alignment horizontal="center" vertical="center"/>
+    </xf>
+    <!-- 2 : données texte (retour à la ligne, haut) -->
+    <xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1">
+      <alignment wrapText="1" vertical="top"/>
+    </xf>
+    <!-- 3 : URL (retour à la ligne, haut, bleu) -->
+    <xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1">
+      <alignment wrapText="1" vertical="top"/>
+    </xf>
+  </cellXfs>
+</styleSheet>`;
+}
+
+// ─── Drawing XML (ancres des vignettes) ──────────────────────────────────────
+// Chaque image est ancrée dans la colonne E (index 4) de sa ligne de données.
+// cx=2743200 EMU (~7,2 cm), cy=1371600 EMU (~3,6 cm) — proportions 16/9
+function xlsxDrawing(events, imgMap) {
+  const IMW = 2743200; // largeur image en EMU
+  const IMH = 1371600; // hauteur image en EMU
+  const PAD = 38100;   // marge intérieure (0,1 cm)
+
+  let anchors = '';
+  events.forEach((ev, idx) => {
+    const n = imgMap.get(idx);
+    if (!n) return;
+    const row = idx + 1; // ligne 0-indexée (skip header à la ligne 0)
+    anchors += `
+  <xdr:oneCellAnchor>
+    <xdr:from>
+      <xdr:col>4</xdr:col><xdr:colOff>${PAD}</xdr:colOff>
+      <xdr:row>${row}</xdr:row><xdr:rowOff>${PAD}</xdr:rowOff>
+    </xdr:from>
+    <xdr:ext cx="${IMW}" cy="${IMH}"/>
+    <xdr:pic>
+      <xdr:nvPicPr>
+        <xdr:cNvPr id="${n}" name="Image${n}" descr="Étape ${ev.id}"/>
+        <xdr:cNvPicPr><a:picLocks noChangeAspect="1"/></xdr:cNvPicPr>
+      </xdr:nvPicPr>
+      <xdr:blipFill>
+        <a:blip r:embed="rId${n}"/>
+        <a:stretch><a:fillRect/></a:stretch>
+      </xdr:blipFill>
+      <xdr:spPr>
+        <a:xfrm><a:off x="0" y="0"/><a:ext cx="${IMW}" cy="${IMH}"/></a:xfrm>
+        <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
+      </xdr:spPr>
+    </xdr:pic>
+    <xdr:clientData/>
+  </xdr:oneCellAnchor>`;
+  });
+
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<xdr:wsDr
+  xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing"
+  xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
+  xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  ${anchors}
+</xdr:wsDr>`;
+}
+
+// ─── Relations images du drawing ──────────────────────────────────────────────
+function xlsxDrawingRels(events, imgMap) {
+  let rels = '';
+  events.forEach((ev, idx) => {
+    const n = imgMap.get(idx);
+    if (!n) return;
+    const ext = ev.screenshot.startsWith('data:image/png') ? 'png' : 'jpeg';
+    rels += `
+  <Relationship Id="rId${n}"
+    Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image"
+    Target="../media/image${n}.${ext}"/>`;
+  });
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  ${rels}
+</Relationships>`;
+}

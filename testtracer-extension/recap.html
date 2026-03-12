@@ -60,6 +60,8 @@
     .btn-export:hover { background: var(--border); border-color: var(--accent); }
     .btn-export.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
     .btn-export.primary:hover { background: #2563eb; }
+    .btn-export.excel  { background: #166534; border-color: #166534; color: #fff; }
+    .btn-export.excel:hover  { background: #15803d; }
 
     /* ── Header session ──────────────────────────────────────────────────── */
     #session-header {
@@ -219,11 +221,12 @@
       🎬 TestTracer
       <span id="session-meta-toolbar"></span>
     </div>
-    <button class="btn-export primary" id="btn-zip">🗜️ Exporter ZIP (DOCX + HTML + MD)</button>
+    <button class="btn-export primary" id="btn-zip">🗜️ ZIP complet</button>
+    <button class="btn-export excel" id="btn-excel">📊 Excel (.xlsx)</button>
     <button class="btn-export" id="btn-docx">📘 Word (.docx)</button>
-    <button class="btn-export" id="btn-html">🌐 HTML autonome</button>
+    <button class="btn-export" id="btn-html">🌐 HTML</button>
     <button class="btn-export" id="btn-md">📝 Markdown</button>
-    <button class="btn-export" id="btn-print">🖨️ Imprimer / PDF</button>
+    <button class="btn-export" id="btn-print">🖨️ PDF</button>
   </div>
 
   <!-- En-tête session -->
