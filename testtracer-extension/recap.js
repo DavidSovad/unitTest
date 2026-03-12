@@ -109,13 +109,26 @@ function closeLightbox() {
   document.getElementById('lightbox-img').src = '';
 }
 
+// ─── Logo Yunit (image13.png) ─────────────────────────────────────────────────
+async function fetchLogo() {
+  try {
+    const url  = chrome.runtime.getURL('image13.png');
+    const resp = await fetch(url);
+    if (!resp.ok) return null;
+    const buf  = await resp.arrayBuffer();
+    return new Uint8Array(buf);
+  } catch {
+    return null;
+  }
+}
 // ─── Export ZIP (DOCX + HTML + Markdown + screenshots) ───────────────────────
 async function doExportZip() {
   const zip      = new ZipBuilder();
   const dateStr  = dateSlug();
 
-  // DOCX
-  const docxBytes = buildDocx(_events, _sessionName);
+  // DOCX avec template Yunit
+  const logoBytes = await fetchLogo();
+  const docxBytes = buildDocx(_events, _sessionName, logoBytes);
   zip.addFile('rapport.docx', docxBytes);
 
   // HTML autonome
@@ -143,8 +156,9 @@ async function doExportZip() {
 }
 
 // ─── Export Word (.docx) ──────────────────────────────────────────────────────
-function doExportDocx() {
-  const bytes = buildDocx(_events, _sessionName);
+async function doExportDocx() {
+  const logoBytes = await fetchLogo();
+  const bytes     = buildDocx(_events, _sessionName, logoBytes);
   downloadBlob(bytes, `testtracer-${dateSlug()}.docx`, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
 }
 

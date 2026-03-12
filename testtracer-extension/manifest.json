@@ -28,7 +28,7 @@
   },
   "web_accessible_resources": [
     {
-      "resources": ["recap.html", "recap.js", "zip-builder.js"],
+      "resources": ["recap.html", "recap.js", "zip-builder.js", "image13.png"],
       "matches": ["<all_urls>"]
     }
   ]
