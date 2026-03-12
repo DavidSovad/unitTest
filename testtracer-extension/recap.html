@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TestTracer — Rapport</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0f172a;
+      --surface: #1e293b;
+      --border: #334155;
+      --text: #e2e8f0;
+      --muted: #94a3b8;
+      --accent: #3b82f6;
+      --green: #22c55e;
+      --red: #ef4444;
+      --orange: #f97316;
+      --yellow: #eab308;
+      --purple: #a855f7;
+      --pink: #ec4899;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-size: 14px;
+      min-height: 100vh;
+    }
+
+    /* ── Toolbar ─────────────────────────────────────────────────────────── */
+    #toolbar {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: #0a1120;
+      border-bottom: 1px solid var(--border);
+      padding: 10px 24px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .toolbar-title { font-weight: 700; font-size: 15px; margin-right: auto; }
+    .toolbar-title span { color: var(--muted); font-weight: 400; font-size: 12px; margin-left: 8px; }
+
+    .btn-export {
+      padding: 7px 14px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--surface);
+      color: var(--text);
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background .15s, border-color .15s;
+    }
+    .btn-export:hover { background: var(--border); border-color: var(--accent); }
+    .btn-export.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .btn-export.primary:hover { background: #2563eb; }
+
+    /* ── Header session ──────────────────────────────────────────────────── */
+    #session-header {
+      padding: 28px 24px 16px;
+      border-bottom: 1px solid var(--border);
+    }
+    #session-title  { font-size: 24px; font-weight: 700; margin-bottom: 4px; }
+    #session-meta   { color: var(--muted); font-size: 13px; }
+
+    /* ── Timeline ────────────────────────────────────────────────────────── */
+    #timeline { padding: 0 24px 48px; }
+
+    .step-card {
+      display: grid;
+      grid-template-columns: 48px 1fr;
+      gap: 0 16px;
+      margin-top: 24px;
+    }
+
+    /* Numéro + ligne verticale */
+    .step-num-col {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding-top: 2px;
+    }
+    .step-num {
+      width: 36px; height: 36px;
+      border-radius: 50%;
+      background: var(--accent);
+      color: #fff;
+      font-weight: 700;
+      font-size: 13px;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .step-line {
+      width: 2px;
+      flex: 1;
+      background: var(--border);
+      margin-top: 6px;
+    }
+
+    /* Contenu */
+    .step-content {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+      margin-bottom: 4px;
+    }
+    .step-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border);
+      flex-wrap: wrap;
+    }
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .4px;
+      color: #fff;
+    }
+    .badge-click        { background: var(--green); }
+    .badge-right-click  { background: var(--red); }
+    .badge-double-click { background: var(--orange); }
+    .badge-middle-click { background: var(--muted); }
+    .badge-input        { background: var(--accent); }
+    .badge-select       { background: var(--purple); }
+    .badge-checkbox     { background: var(--pink); }
+    .badge-radio        { background: var(--pink); }
+    .badge-scroll       { background: var(--yellow); color: #1a1a1a; }
+    .badge-navigation   { background: #06b6d4; }
+    .badge-default      { background: var(--muted); }
+
+    .step-time { font-size: 11px; color: var(--muted); margin-left: auto; white-space: nowrap; }
+
+    .step-body { padding: 10px 14px; }
+    .step-desc { font-size: 13px; line-height: 1.5; margin-bottom: 6px; }
+    .step-url  {
+      font-size: 11px; color: var(--muted);
+      word-break: break-all;
+      margin-bottom: 6px;
+    }
+    .step-selector {
+      font-size: 11px; color: var(--muted);
+      font-family: 'Courier New', monospace;
+      background: #0f172a;
+      padding: 2px 6px; border-radius: 3px;
+      display: inline-block;
+    }
+
+    /* Screenshot */
+    .step-screenshot {
+      border-top: 1px solid var(--border);
+      overflow: hidden;
+      cursor: zoom-in;
+    }
+    .step-screenshot img {
+      width: 100%;
+      display: block;
+      transition: opacity .2s;
+    }
+    .step-screenshot img:hover { opacity: .9; }
+    .no-screenshot {
+      padding: 8px 14px;
+      color: var(--muted);
+      font-size: 11px;
+      border-top: 1px solid var(--border);
+      font-style: italic;
+    }
+
+    /* ── Lightbox ────────────────────────────────────────────────────────── */
+    #lightbox {
+      display: none;
+      position: fixed; inset: 0; z-index: 9999;
+      background: rgba(0,0,0,.88);
+      align-items: center; justify-content: center;
+    }
+    #lightbox.open { display: flex; }
+    #lightbox img {
+      max-width: 95vw;
+      max-height: 95vh;
+      border-radius: 8px;
+      box-shadow: 0 8px 40px rgba(0,0,0,.7);
+      cursor: zoom-out;
+    }
+
+    /* ── Vide ────────────────────────────────────────────────────────────── */
+    .empty-state {
+      text-align: center;
+      padding: 60px 24px;
+      color: var(--muted);
+    }
+    .empty-state p { font-size: 16px; margin-top: 8px; }
+
+    /* ── Print ───────────────────────────────────────────────────────────── */
+    @media print {
+      #toolbar, #lightbox { display: none !important; }
+      body { background: white; color: black; }
+      .step-content { border: 1px solid #ccc; page-break-inside: avoid; }
+      .step-screenshot img { max-width: 100%; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Toolbar avec boutons export -->
+  <div id="toolbar">
+    <div class="toolbar-title">
+      🎬 TestTracer
+      <span id="session-meta-toolbar"></span>
+    </div>
+    <button class="btn-export primary" id="btn-zip">🗜️ Exporter ZIP (DOCX + HTML + MD)</button>
+    <button class="btn-export" id="btn-docx">📘 Word (.docx)</button>
+    <button class="btn-export" id="btn-html">🌐 HTML autonome</button>
+    <button class="btn-export" id="btn-md">📝 Markdown</button>
+    <button class="btn-export" id="btn-print">🖨️ Imprimer / PDF</button>
+  </div>
+
+  <!-- En-tête session -->
+  <div id="session-header">
+    <div id="session-title">Chargement…</div>
+    <div id="session-meta"></div>
+  </div>
+
+  <!-- Timeline -->
+  <div id="timeline">
+    <div class="empty-state" id="empty-state" style="display:none">
+      <div style="font-size:48px">📭</div>
+      <p>Aucun événement enregistré dans cette session.</p>
+    </div>
+  </div>
+
+  <!-- Lightbox -->
+  <div id="lightbox">
+    <img id="lightbox-img" src="" alt="Capture plein écran">
+  </div>
+
+  <script src="zip-builder.js"></script>
+  <script src="recap.js"></script>
+</body>
+</html>

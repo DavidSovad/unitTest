@@ -1,0 +1,35 @@
+{
+  "manifest_version": 3,
+  "name": "TestTracer Recorder",
+  "version": "2.0",
+  "description": "Enregistre automatiquement les actions utilisateur (clics, saisies, navigations) avec captures d'écran — compatible ServiceNow et iframes",
+  "permissions": [
+    "activeTab",
+    "tabs",
+    "scripting",
+    "storage",
+    "webNavigation"
+  ],
+  "host_permissions": ["<all_urls>"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_idle",
+      "all_frames": true
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "TestTracer Recorder"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["recap.html", "recap.js", "zip-builder.js"],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}

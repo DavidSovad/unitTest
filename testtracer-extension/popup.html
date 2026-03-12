@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TestTracer</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      width: 290px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #1a1a2e;
+      color: #e0e0e0;
+      user-select: none;
+    }
+
+    .header {
+      background: #16213e;
+      padding: 12px 16px;
+      border-bottom: 2px solid #0f3460;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .logo { font-size: 22px; line-height: 1; }
+    .title { font-size: 14px; font-weight: 700; letter-spacing: .3px; }
+    .subtitle { font-size: 10px; color: #7f8c9a; margin-top: 1px; }
+
+    .body { padding: 14px 16px; }
+
+    .field { margin-bottom: 12px; }
+    label {
+      display: block;
+      font-size: 10px;
+      color: #7f8c9a;
+      text-transform: uppercase;
+      letter-spacing: .6px;
+      margin-bottom: 5px;
+    }
+    input[type="text"] {
+      width: 100%;
+      padding: 7px 10px;
+      background: #16213e;
+      border: 1px solid #2c3e5a;
+      border-radius: 6px;
+      color: #e0e0e0;
+      font-size: 12px;
+      outline: none;
+      transition: border-color .2s;
+    }
+    input[type="text"]:focus { border-color: #e74c3c; }
+    input:disabled { opacity: .5; cursor: not-allowed; }
+
+    .status-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      background: #16213e;
+      border-radius: 6px;
+      margin-bottom: 12px;
+      font-size: 12px;
+    }
+    .dot { width: 9px; height: 9px; border-radius: 50%; background: #4a5568; flex-shrink: 0; }
+    .dot.recording { background: #e74c3c; animation: blink 1s infinite; }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.2} }
+    #status-text { flex: 1; }
+    #event-count { font-size: 10px; color: #7f8c9a; }
+
+    .btn {
+      display: block;
+      width: 100%;
+      padding: 9px 12px;
+      border: none;
+      border-radius: 7px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity .15s, transform .1s;
+      margin-bottom: 8px;
+      letter-spacing: .2px;
+    }
+    .btn:hover:not(:disabled) { opacity: .87; }
+    .btn:active:not(:disabled) { transform: scale(.98); }
+    .btn:disabled { opacity: .4; cursor: not-allowed; }
+    #btn-start { background: #27ae60; color: #fff; }
+    #btn-stop  { background: #e74c3c; color: #fff; }
+
+    .msg {
+      font-size: 11px;
+      color: #7f8c9a;
+      text-align: center;
+      min-height: 16px;
+      padding: 2px 0;
+    }
+    .msg.error { color: #e74c3c; }
+    .msg.ok    { color: #27ae60; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="logo">🎬</div>
+    <div>
+      <div class="title">TestTracer Recorder</div>
+      <div class="subtitle">Capture automatique des actions</div>
+    </div>
+  </div>
+
+  <div class="body">
+    <div class="field">
+      <label>Nom de la session</label>
+      <input type="text" id="session-name" placeholder="Ex: Test login v2.1" maxlength="80">
+    </div>
+
+    <div class="status-bar">
+      <div class="dot" id="dot"></div>
+      <span id="status-text">En attente</span>
+      <span id="event-count"></span>
+    </div>
+
+    <button class="btn" id="btn-start">▶&nbsp; Démarrer l'enregistrement</button>
+    <button class="btn" id="btn-stop" disabled>⏹&nbsp; Arrêter et voir le rapport</button>
+    <div class="msg" id="msg"></div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
