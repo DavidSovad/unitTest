@@ -226,24 +226,31 @@ function recomputeDuplicates() {
 
 // ─── Événements pour export (step nums + sélection captures) ─────────────────
 function getExportEvents() {
-  const stepCount = {};
-  _events.forEach((ev, idx) => {
-    const sn = _stepNums[idx];
-    stepCount[sn] = (stepCount[sn] || 0) + 1;
+  // Exclure les étapes 0, conserver l'index original
+  const active = _events
+    .map((ev, idx) => ({ ev, idx, sn: _stepNums[idx] }))
+    .filter(({ sn }) => sn !== '0');
+
+  // Numérotation séquentielle : première occurrence d'un numéro = prochain entier
+  // Les doublons partagent le même numéro séquentiel (ex: 2 3 4 4 0 5 → 1 2 3 3 4)
+  const seqMap = {};
+  let seq = 1;
+  active.forEach(({ sn }) => {
+    if (!(sn in seqMap)) seqMap[sn] = seq++;
   });
 
-  const result = [];
-  _events.forEach((ev, idx) => {
-    const sn = _stepNums[idx];
-    if (sn === '0') return; // étape ignorée
+  // Compte pour la sélection de capture par groupe
+  const stepCount = {};
+  active.forEach(({ sn }) => { stepCount[sn] = (stepCount[sn] || 0) + 1; });
+
+  return active.map(({ ev, idx, sn }) => {
     let screenshot = ev.screenshot;
     if (screenshot && stepCount[sn] > 1) {
       const picked = _pickedShot[sn] !== undefined ? _pickedShot[sn] : -1;
       if (picked !== idx) screenshot = null;
     }
-    result.push({ ...ev, id: sn, screenshot });
+    return { ...ev, id: String(seqMap[sn]), screenshot };
   });
-  return result;
 }
 
 // ─── Lightbox ─────────────────────────────────────────────────────────────────
