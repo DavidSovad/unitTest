@@ -61,6 +61,12 @@
     .btn-export.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
     .btn-export.primary:hover { background: #2563eb; }
 
+    .lang-toggle { display: flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; margin-left: 8px; }
+    .btn-lang { padding: 7px 12px; border: none; background: var(--surface); color: var(--muted); font-size: 12px; font-weight: 700; cursor: pointer; transition: background .15s, color .15s; }
+    .btn-lang:first-child { border-right: 1px solid var(--border); }
+    .btn-lang.active { background: var(--accent); color: #fff; }
+    .btn-lang:not(.active):hover { background: var(--border); color: var(--text); }
+
     /* ── Header session ──────────────────────────────────────────────────── */
     #session-header {
       padding: 28px 24px 16px;
@@ -225,6 +231,10 @@
     <button class="btn-export" id="btn-md">📝 Markdown</button>
     <button class="btn-export" id="btn-excel">📊 Excel (.csv)</button>
     <button class="btn-export" id="btn-print">🖨️ Imprimer / PDF</button>
+    <div class="lang-toggle">
+      <button class="btn-lang active" id="btn-lang-fr">FR</button>
+      <button class="btn-lang" id="btn-lang-en">EN</button>
+    </div>
   </div>
 
   <!-- En-tête session -->

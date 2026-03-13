@@ -4,19 +4,52 @@
 let _events      = [];
 let _sessionName = '';
 let _stoppedAt   = '';
+let _lang        = 'fr';
 
-// ─── Types d'action → libellé + classe CSS ────────────────────────────────────
+// ─── Internationalisation ─────────────────────────────────────────────────────
+const I18N = {
+  fr: {
+    types: {
+      'click':'Clic','right-click':'Clic droit','double-click':'Double-clic',
+      'middle-click':'Clic molette','input':'Saisie','select':'Sélection',
+      'checkbox':'Checkbox','radio':'Radio','scroll':'Défilement','navigation':'Navigation'
+    },
+    step: 'Étape', generatedOn: 'Rapport généré le', actions: 'action(s)',
+    noCapture: 'Pas de capture', noCaptureAvail: 'Pas de capture disponible',
+    time: 'Heure', action: 'Action', selector: 'Sélecteur',
+    xlsxHeaders: ["N°","Type","Description","URL","Sélecteur","Heure","Capture d'écran"],
+    screenshotAlt: 'Capture étape', sessionPrefix: 'Session'
+  },
+  en: {
+    types: {
+      'click':'Click','right-click':'Right click','double-click':'Double click',
+      'middle-click':'Middle click','input':'Input','select':'Select',
+      'checkbox':'Checkbox','radio':'Radio','scroll':'Scroll','navigation':'Navigation'
+    },
+    step: 'Step', generatedOn: 'Report generated on', actions: 'action(s)',
+    noCapture: 'No screenshot', noCaptureAvail: 'No screenshot available',
+    time: 'Time', action: 'Action', selector: 'Selector',
+    xlsxHeaders: ['#','Type','Description','URL','Selector','Time','Screenshot'],
+    screenshotAlt: 'Screenshot step', sessionPrefix: 'Session'
+  }
+};
+
+function t(key)       { return I18N[_lang][key]; }
+function locale()     { return _lang === 'fr' ? 'fr-FR' : 'en-US'; }
+function typeLabel(type) { return I18N[_lang].types[type] || type; }
+
+// ─── Types d'action → classe CSS ─────────────────────────────────────────────
 const TYPE_META = {
-  'click':        { label: 'Clic',        cls: 'badge-click'        },
-  'right-click':  { label: 'Clic droit',  cls: 'badge-right-click'  },
-  'double-click': { label: 'Double-clic', cls: 'badge-double-click' },
-  'middle-click': { label: 'Clic molette',cls: 'badge-middle-click' },
-  'input':        { label: 'Saisie',      cls: 'badge-input'        },
-  'select':       { label: 'Sélection',   cls: 'badge-select'       },
-  'checkbox':     { label: 'Checkbox',    cls: 'badge-checkbox'     },
-  'radio':        { label: 'Radio',       cls: 'badge-radio'        },
-  'scroll':       { label: 'Défilement',  cls: 'badge-scroll'       },
-  'navigation':   { label: 'Navigation',  cls: 'badge-navigation'   }
+  'click':        { cls: 'badge-click'        },
+  'right-click':  { cls: 'badge-right-click'  },
+  'double-click': { cls: 'badge-double-click' },
+  'middle-click': { cls: 'badge-middle-click' },
+  'input':        { cls: 'badge-input'        },
+  'select':       { cls: 'badge-select'       },
+  'checkbox':     { cls: 'badge-checkbox'     },
+  'radio':        { cls: 'badge-radio'        },
+  'scroll':       { cls: 'badge-scroll'       },
+  'navigation':   { cls: 'badge-navigation'   }
 };
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
@@ -53,6 +86,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Lightbox fermeture
   document.getElementById('lightbox').addEventListener('click', closeLightbox);
   document.getElementById('lightbox-img').addEventListener('click', closeLightbox);
+
+  // Sélection de langue
+  document.getElementById('btn-lang-fr').addEventListener('click', () => setLang('fr'));
+  document.getElementById('btn-lang-en').addEventListener('click', () => setLang('en'));
 });
 
 // ─── Rendu de la timeline ────────────────────────────────────────────────────
@@ -60,9 +97,9 @@ function renderTimeline() {
   const container = document.getElementById('timeline');
 
   _events.forEach((ev, idx) => {
-    const meta    = TYPE_META[ev.eventType] || { label: ev.eventType, cls: 'badge-default' };
+    const meta    = TYPE_META[ev.eventType] || { cls: 'badge-default' };
     const isLast  = idx === _events.length - 1;
-    const time    = new Date(ev.timestamp).toLocaleTimeString('fr-FR');
+    const time    = new Date(ev.timestamp).toLocaleTimeString(locale());
 
     const card = document.createElement('div');
     card.className = 'step-card';
@@ -73,7 +110,7 @@ function renderTimeline() {
       </div>
       <div class="step-content">
         <div class="step-header">
-          <span class="badge ${meta.cls}">${meta.label}</span>
+          <span class="badge ${meta.cls}">${typeLabel(ev.eventType)}</span>
           <span class="step-time">${time}</span>
         </div>
         <div class="step-body">
@@ -85,7 +122,7 @@ function renderTimeline() {
           ? `<div class="step-screenshot" data-src="${ev.screenshot}">
                <img src="${ev.screenshot}" alt="Capture étape ${ev.id}" loading="lazy">
              </div>`
-          : `<div class="no-screenshot">Pas de capture disponible</div>`
+          : `<div class="no-screenshot">${t('noCaptureAvail')}</div>`
         }
       </div>`;
 
@@ -131,7 +168,7 @@ async function doExportZip() {
 
   // DOCX avec template Yunit
   const logoBytes = await fetchLogo();
-  const docxBytes = buildDocx(filtered, _sessionName, logoBytes);
+  const docxBytes = buildDocx(filtered, _sessionName, logoBytes, _lang);
   zip.addFile('rapport.docx', docxBytes);
 
   // HTML autonome
@@ -164,7 +201,7 @@ async function doExportZip() {
 // ─── Export Word (.docx) ──────────────────────────────────────────────────────
 async function doExportDocx() {
   const logoBytes = await fetchLogo();
-  const bytes     = buildDocx(filterEvents(_events), _sessionName, logoBytes);
+  const bytes     = buildDocx(filterEvents(_events), _sessionName, logoBytes, _lang);
   downloadBlob(bytes, `testtracer-${dateSlug()}.docx`, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
 }
 
@@ -199,21 +236,21 @@ function doExportExcel() {
 
 // ─── Constructeur rapport HTML autonome ──────────────────────────────────────
 function buildHtmlReport(events, sessionName) {
-  const date  = new Date(_stoppedAt).toLocaleString('fr-FR');
+  const date  = new Date(_stoppedAt).toLocaleString(locale());
+  const colors = {
+    'click':'#22c55e','right-click':'#ef4444','double-click':'#f97316',
+    'middle-click':'#94a3b8','input':'#3b82f6','select':'#a855f7',
+    'checkbox':'#ec4899','radio':'#ec4899','scroll':'#eab308','navigation':'#06b6d4'
+  };
   const steps = events.map(ev => {
-    const meta = TYPE_META[ev.eventType] || { label: ev.eventType };
-    const time = new Date(ev.timestamp).toLocaleTimeString('fr-FR');
-    const colors = {
-      'click':'#22c55e','right-click':'#ef4444','double-click':'#f97316',
-      'middle-click':'#94a3b8','input':'#3b82f6','select':'#a855f7',
-      'checkbox':'#ec4899','radio':'#ec4899','scroll':'#eab308','navigation':'#06b6d4'
-    };
+    const label = typeLabel(ev.eventType);
+    const time  = new Date(ev.timestamp).toLocaleTimeString(locale());
     const color = colors[ev.eventType] || '#94a3b8';
     return `
     <div style="border:1px solid #334155;border-radius:8px;overflow:hidden;margin-bottom:20px;background:#1e293b">
       <div style="padding:8px 14px;background:#0f172a;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-        <span style="font-weight:700;font-size:15px;color:#e2e8f0">Étape ${ev.id}</span>
-        <span style="background:${color};color:#fff;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;text-transform:uppercase">${meta.label}</span>
+        <span style="font-weight:700;font-size:15px;color:#e2e8f0">${t('step')} ${ev.id}</span>
+        <span style="background:${color};color:#fff;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;text-transform:uppercase">${label}</span>
         <span style="margin-left:auto;font-size:11px;color:#94a3b8">${time}</span>
       </div>
       <div style="padding:10px 14px">
@@ -222,14 +259,14 @@ function buildHtmlReport(events, sessionName) {
         ${ev.selector ? `<code style="font-size:10px;color:#94a3b8;background:#0f172a;padding:2px 5px;border-radius:3px">${escHtml(ev.selector)}</code>` : ''}
       </div>
       ${ev.screenshot
-        ? `<img src="${ev.screenshot}" alt="Capture étape ${ev.id}" style="width:100%;display:block;border-top:1px solid #334155">`
-        : `<div style="padding:6px 14px;font-size:11px;color:#64748b;border-top:1px solid #334155;font-style:italic">Pas de capture</div>`
+        ? `<img src="${ev.screenshot}" alt="${t('screenshotAlt')} ${ev.id}" style="width:100%;display:block;border-top:1px solid #334155">`
+        : `<div style="padding:6px 14px;font-size:11px;color:#64748b;border-top:1px solid #334155;font-style:italic">${t('noCapture')}</div>`
       }
     </div>`;
   }).join('');
 
   return `<!DOCTYPE html>
-<html lang="fr">
+<html lang="${_lang}">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -243,7 +280,7 @@ function buildHtmlReport(events, sessionName) {
 </head>
 <body>
   <h1>🎬 ${escHtml(sessionName)}</h1>
-  <p class="meta">Rapport généré le ${date} — ${events.length} action(s)</p>
+  <p class="meta">${t('generatedOn')} ${date} — ${events.length} ${t('actions')}</p>
   ${steps}
 </body>
 </html>`;
@@ -251,26 +288,33 @@ function buildHtmlReport(events, sessionName) {
 
 // ─── Constructeur Markdown ────────────────────────────────────────────────────
 function buildMarkdown(events, sessionName) {
-  const date  = new Date(_stoppedAt).toLocaleString('fr-FR');
+  const date  = new Date(_stoppedAt).toLocaleString(locale());
   let md = `# ${sessionName}\n\n`;
-  md += `> Rapport généré le ${date} — ${events.length} action(s)\n\n---\n\n`;
+  md += `> ${t('generatedOn')} ${date} — ${events.length} ${t('actions')}\n\n---\n\n`;
 
   events.forEach(ev => {
-    const meta = TYPE_META[ev.eventType] || { label: ev.eventType };
-    const time = new Date(ev.timestamp).toLocaleTimeString('fr-FR');
-    md += `## Étape ${ev.id} — ${meta.label}\n\n`;
-    md += `- **Heure :** ${time}\n`;
-    md += `- **Action :** ${ev.description}\n`;
+    const label = typeLabel(ev.eventType);
+    const time  = new Date(ev.timestamp).toLocaleTimeString(locale());
+    md += `## ${t('step')} ${ev.id} — ${label}\n\n`;
+    md += `- **${t('time')} :** ${time}\n`;
+    md += `- **${t('action')} :** ${ev.description}\n`;
     if (ev.url)      md += `- **URL :** ${ev.url}\n`;
-    if (ev.selector) md += `- **Sélecteur :** \`${ev.selector}\`\n`;
+    if (ev.selector) md += `- **${t('selector')} :** \`${ev.selector}\`\n`;
     md += '\n';
     if (ev.screenshot) {
-      md += `![Capture étape ${ev.id}](screenshots/step-${ev.id}.jpeg)\n\n`;
+      md += `![${t('screenshotAlt')} ${ev.id}](screenshots/step-${ev.id}.jpeg)\n\n`;
     }
     md += '---\n\n';
   });
 
   return md;
+}
+
+// ─── Sélection de langue ──────────────────────────────────────────────────────
+function setLang(lang) {
+  _lang = lang;
+  document.getElementById('btn-lang-fr').classList.toggle('active', lang === 'fr');
+  document.getElementById('btn-lang-en').classList.toggle('active', lang === 'en');
 }
 
 // ─── Filtre "Filter navigator" ────────────────────────────────────────────────
@@ -288,7 +332,7 @@ function filterEvents(events) {
 // ─── Constructeur XLSX (vrai OOXML avec images embarquées) ───────────────────
 function buildXlsx(events, sessionName) {
   const zip  = new ZipBuilder();
-  const date = new Date(_stoppedAt).toLocaleString('fr-FR');
+  const date = new Date(_stoppedAt).toLocaleString(locale());
   const xe   = s => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 
   // Dimensions image : 200×113 px à 96 DPI → EMU (1 px = 9525 EMU)
@@ -401,7 +445,7 @@ function buildXlsx(events, sessionName) {
   sheetData += `<row r="2" ht="6" customHeight="1"/>`;
 
   // Ligne 3 : en-têtes de colonnes
-  const headers = ['N°','Type','Description','URL','Sélecteur','Heure','Capture d\'écran'];
+  const headers = t('xlsxHeaders');
   const headerCells = headers.map((h, c) =>
     `<c r="${COLS[c]}3" t="inlineStr" s="2"><is><t>${xe(h)}</t></is></c>`
   ).join('');
@@ -409,11 +453,10 @@ function buildXlsx(events, sessionName) {
 
   // Lignes de données
   events.forEach((ev, i) => {
-    const meta   = TYPE_META[ev.eventType] || { label: ev.eventType };
-    const time   = new Date(ev.timestamp).toLocaleTimeString('fr-FR');
+    const time   = new Date(ev.timestamp).toLocaleTimeString(locale());
     const rowRef = DATA_START_ROW + i + 1; // 1-based
     const htAttr = ev.screenshot ? ` ht="${imgRowHt}" customHeight="1"` : '';
-    const vals   = [String(ev.id), meta.label, ev.description || '', ev.url || '', ev.selector || '', time, ''];
+    const vals   = [String(ev.id), typeLabel(ev.eventType), ev.description || '', ev.url || '', ev.selector || '', time, ''];
     const cells  = vals.map((v, c) =>
       `<c r="${COLS[c]}${rowRef}" t="inlineStr" s="3"><is><t>${xe(v)}</t></is></c>`
     ).join('');

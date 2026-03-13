@@ -163,9 +163,10 @@ function toDosDateTime(d) {
  * pied de page légal, format A4 avec marges professionnelles.
  * @param {Uint8Array|null} logoBytes  Binaire de image13.png (optionnel)
  */
-function buildDocx(events, sessionName, logoBytes) {
+function buildDocx(events, sessionName, logoBytes, lang = 'fr') {
   const zip     = new ZipBuilder();
-  const date    = new Date().toLocaleString('fr-FR');
+  const lc      = lang === 'fr' ? 'fr-FR' : 'en-US';
+  const date    = new Date().toLocaleString(lc);
   const hasLogo = logoBytes instanceof Uint8Array && logoBytes.length > 0;
 
   // Images des events
@@ -248,15 +249,17 @@ function buildDocx(events, sessionName, logoBytes) {
   }
 
   // ── word/footer1.xml ──────────────────────────────────────────────────────
-  zip.addFile('word/footer1.xml', docxFooter());
+  zip.addFile('word/footer1.xml', docxFooter(lang));
 
   // ── word/document.xml ────────────────────────────────────────────────────
-  const typeLabels = {
-    'click':       'Clic',        'right-click': 'Clic droit',
-    'double-click':'Double-clic', 'middle-click':'Clic molette',
-    'input':       'Saisie',      'select':      'Sélection',
-    'checkbox':    'Checkbox',    'radio':       'Radio',
-    'scroll':      'Défilement',  'navigation':  'Navigation'
+  const typeLabels = lang === 'fr' ? {
+    'click':'Clic','right-click':'Clic droit','double-click':'Double-clic',
+    'middle-click':'Clic molette','input':'Saisie','select':'Sélection',
+    'checkbox':'Checkbox','radio':'Radio','scroll':'Défilement','navigation':'Navigation'
+  } : {
+    'click':'Click','right-click':'Right click','double-click':'Double click',
+    'middle-click':'Middle click','input':'Input','select':'Select',
+    'checkbox':'Checkbox','radio':'Radio','scroll':'Scroll','navigation':'Navigation'
   };
 
   // 15 cm × 8.44 cm en EMU (1 cm = 360 000 EMU)
@@ -273,16 +276,16 @@ function buildDocx(events, sessionName, logoBytes) {
   // Métadonnées
   body += `<w:p><w:r><w:rPr><w:color w:val="7F7F7F"/><w:sz w:val="20"/>
     <w:rFonts w:ascii="Calibri" w:hAnsi="Calibri"/></w:rPr>
-    <w:t xml:space="preserve">Rapport généré le ${xmlEsc(date)} — ${events.length} action(s)</w:t>
+    <w:t xml:space="preserve">${lang === 'fr' ? 'Rapport généré le' : 'Report generated on'} ${xmlEsc(date)} — ${events.length} action(s)</w:t>
   </w:r></w:p><w:p/>`;
 
   events.forEach((ev, idx) => {
     const label = typeLabels[ev.eventType] || ev.eventType;
-    const time  = new Date(ev.timestamp).toLocaleTimeString('fr-FR');
+    const time  = new Date(ev.timestamp).toLocaleTimeString(lc);
 
     // En-tête étape
     body += `<w:p><w:pPr><w:pStyle w:val="Heading2"/></w:pPr>
-      <w:r><w:t xml:space="preserve">Étape ${ev.id} — ${xmlEsc(label)}</w:t></w:r></w:p>`;
+      <w:r><w:t xml:space="preserve">${lang === 'fr' ? 'Étape' : 'Step'} ${ev.id} — ${xmlEsc(label)}</w:t></w:r></w:p>`;
 
     // Heure + URL
     body += `<w:p><w:r><w:rPr><w:color w:val="7F7F7F"/><w:sz w:val="20"/>
@@ -525,8 +528,11 @@ function docxHeader(sessionName, hasLogo) {
 }
 
 /** Pied de page : infos légales Yunit + numéro de page */
-function docxFooter() {
-  const year = new Date().getFullYear();
+function docxFooter(lang = 'fr') {
+  const year   = new Date().getFullYear();
+  const conf   = lang === 'fr' ? 'Document confidentiel' : 'Confidential document';
+  const rights = lang === 'fr' ? 'Tous droits réservés' : 'All rights reserved';
+  const page   = 'Page';
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:ftr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
   <w:p>
@@ -535,7 +541,7 @@ function docxFooter() {
       <w:t xml:space="preserve">Yunit </w:t>
     </w:r>
     <w:r>
-      <w:t xml:space="preserve"> — Document confidentiel — © ${year} Yunit. Tous droits réservés. — Page&#160;</w:t>
+      <w:t xml:space="preserve"> — ${conf} — © ${year} Yunit. ${rights}. — ${page}&#160;</w:t>
     </w:r>
     <w:fldSimple w:instr=" PAGE "><w:r><w:t>1</w:t></w:r></w:fldSimple>
     <w:r><w:t xml:space="preserve">&#160;/&#160;</w:t></w:r>
