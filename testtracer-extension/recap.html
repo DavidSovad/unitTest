@@ -67,6 +67,74 @@
     .btn-lang.active { background: var(--accent); color: #fff; }
     .btn-lang:not(.active):hover { background: var(--border); color: var(--text); }
 
+    /* ── Sidebar numéros d'étapes ─────────────────────────────────────── */
+    body { padding-left: 52px; }
+
+    #step-nav {
+      position: fixed;
+      left: 0; top: 0; bottom: 0;
+      width: 52px;
+      background: #060d1a;
+      border-right: 1px solid var(--border);
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding-top: 58px;
+      padding-bottom: 24px;
+      gap: 5px;
+      z-index: 200;
+      scrollbar-width: thin;
+      scrollbar-color: var(--border) transparent;
+    }
+    .nav-num {
+      width: 32px; height: 32px;
+      border-radius: 50%;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--muted);
+      font-size: 11px; font-weight: 700;
+      display: flex; align-items: center; justify-content: center;
+      text-decoration: none;
+      flex-shrink: 0;
+      transition: background .12s, color .12s, border-color .12s;
+    }
+    .nav-num:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .nav-num.dup { background: var(--orange); border-color: var(--orange); color: #fff; }
+
+    /* ── Input numéro d'étape ─────────────────────────────────────────── */
+    .step-input {
+      width: 36px; height: 36px;
+      border-radius: 50%;
+      background: var(--accent);
+      color: #fff;
+      font-weight: 700; font-size: 13px;
+      border: 2px solid transparent;
+      text-align: center;
+      padding: 0;
+      outline: none;
+      cursor: text;
+      -moz-appearance: textfield;
+    }
+    .step-input::-webkit-outer-spin-button,
+    .step-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+    .step-input:focus { border-color: #93c5fd; background: #1d4ed8; }
+    .step-input.dup { background: var(--orange); }
+
+    /* ── Sélection de capture pour export ────────────────────────────── */
+    .screenshot-pick {
+      display: none;
+      padding: 6px 14px;
+      border-top: 1px solid rgba(249,115,22,.35);
+      background: rgba(249,115,22,.07);
+      font-size: 11px;
+      color: var(--orange);
+      align-items: center;
+      gap: 8px;
+    }
+    .screenshot-pick.visible { display: flex; }
+    .screenshot-pick label { display: flex; align-items: center; gap: 5px; cursor: pointer; }
+
     /* ── Header session ──────────────────────────────────────────────────── */
     #session-header {
       padding: 28px 24px 16px;
@@ -218,6 +286,9 @@
   </style>
 </head>
 <body>
+
+  <!-- Sidebar numéros d'étapes -->
+  <div id="step-nav"></div>
 
   <!-- Toolbar avec boutons export -->
   <div id="toolbar">

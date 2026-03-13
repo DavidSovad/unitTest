@@ -5,6 +5,8 @@ let _events      = [];
 let _sessionName = '';
 let _stoppedAt   = '';
 let _lang        = 'fr';
+let _stepNums    = []; // _stepNums[idx] = numéro d'étape saisi par l'utilisateur (string)
+let _pickedShot  = {}; // stepNum (string) → eventIdx dont la capture est retenue pour l'export
 
 // ─── Internationalisation ─────────────────────────────────────────────────────
 const I18N = {
@@ -18,7 +20,8 @@ const I18N = {
     noCapture: 'Pas de capture', noCaptureAvail: 'Pas de capture disponible',
     time: 'Heure', action: 'Action', selector: 'Sélecteur',
     xlsxHeaders: ["N°","Type","Description","URL","Sélecteur","Heure","Capture d'écran"],
-    screenshotAlt: 'Capture étape', sessionPrefix: 'Session'
+    screenshotAlt: 'Capture étape', sessionPrefix: 'Session',
+    useCaptureLabel: "Utiliser cette capture pour l'export"
   },
   en: {
     types: {
@@ -30,7 +33,8 @@ const I18N = {
     noCapture: 'No screenshot', noCaptureAvail: 'No screenshot available',
     time: 'Time', action: 'Action', selector: 'Selector',
     xlsxHeaders: ['#','Type','Description','URL','Selector','Time','Screenshot'],
-    screenshotAlt: 'Screenshot step', sessionPrefix: 'Session'
+    screenshotAlt: 'Screenshot step', sessionPrefix: 'Session',
+    useCaptureLabel: 'Use this screenshot for export'
   }
 };
 
@@ -69,10 +73,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('session-meta-toolbar').textContent = metaText;
   document.title = `TestTracer — ${_sessionName}`;
 
+  _stepNums = _events.map(ev => String(ev.id));
+
   if (_events.length === 0) {
     document.getElementById('empty-state').style.display = '';
   } else {
     renderTimeline();
+    rebuildStepNav();
+    recomputeDuplicates();
   }
 
   // Boutons export
@@ -97,15 +105,16 @@ function renderTimeline() {
   const container = document.getElementById('timeline');
 
   _events.forEach((ev, idx) => {
-    const meta    = TYPE_META[ev.eventType] || { cls: 'badge-default' };
-    const isLast  = idx === _events.length - 1;
-    const time    = new Date(ev.timestamp).toLocaleTimeString(locale());
+    const meta   = TYPE_META[ev.eventType] || { cls: 'badge-default' };
+    const isLast = idx === _events.length - 1;
+    const time   = new Date(ev.timestamp).toLocaleTimeString(locale());
 
     const card = document.createElement('div');
     card.className = 'step-card';
+    card.id = `step-card-${idx}`;
     card.innerHTML = `
       <div class="step-num-col">
-        <div class="step-num">${ev.id}</div>
+        <input type="number" class="step-input" value="${_stepNums[idx]}" min="1" data-idx="${idx}">
         ${!isLast ? '<div class="step-line"></div>' : ''}
       </div>
       <div class="step-content">
@@ -120,7 +129,10 @@ function renderTimeline() {
         </div>
         ${ev.screenshot
           ? `<div class="step-screenshot" data-src="${ev.screenshot}">
-               <img src="${ev.screenshot}" alt="Capture étape ${ev.id}" loading="lazy">
+               <img src="${ev.screenshot}" alt="${t('screenshotAlt')} ${ev.id}" loading="lazy">
+             </div>
+             <div class="screenshot-pick" id="pick-${idx}">
+               <label><input type="radio" name="" value="${idx}"> ${t('useCaptureLabel')}</label>
              </div>`
           : `<div class="no-screenshot">${t('noCaptureAvail')}</div>`
         }
@@ -133,8 +145,101 @@ function renderTimeline() {
       card.querySelector('.step-screenshot').addEventListener('click', () => {
         openLightbox(ev.screenshot);
       });
+      // Sélection de la capture pour l'export (radio)
+      card.querySelector('.screenshot-pick input[type="radio"]').addEventListener('change', function () {
+        if (this.checked) _pickedShot[_stepNums[idx]] = idx;
+      });
+    }
+
+    // Édition du numéro d'étape
+    card.querySelector('.step-input').addEventListener('change', function () {
+      const val = this.value.trim();
+      if (!val || isNaN(val) || Number(val) < 1) { this.value = _stepNums[idx]; return; }
+      _stepNums[idx] = val;
+      rebuildStepNav();
+      recomputeDuplicates();
+    });
+  });
+}
+
+// ─── Sidebar de navigation ────────────────────────────────────────────────────
+function rebuildStepNav() {
+  const nav = document.getElementById('step-nav');
+  nav.innerHTML = '';
+  // Compte les occurrences de chaque numéro
+  const count = {};
+  _events.forEach((ev, idx) => { const sn = _stepNums[idx]; count[sn] = (count[sn] || 0) + 1; });
+
+  _events.forEach((ev, idx) => {
+    const sn  = _stepNums[idx];
+    const a   = document.createElement('a');
+    a.href      = `#step-card-${idx}`;
+    a.className = 'nav-num' + (count[sn] > 1 ? ' dup' : '');
+    a.textContent = sn;
+    a.title = `${t('step')} ${sn}`;
+    nav.appendChild(a);
+  });
+}
+
+// ─── Détection des doublons et mise à jour de l'UI ───────────────────────────
+function recomputeDuplicates() {
+  // Groupe : stepNum → [idx, ...]
+  const groups = {};
+  _events.forEach((ev, idx) => {
+    const sn = _stepNums[idx];
+    if (!groups[sn]) groups[sn] = [];
+    groups[sn].push(idx);
+  });
+
+  _events.forEach((ev, idx) => {
+    const sn    = _stepNums[idx];
+    const group = groups[sn];
+    const isDup = group.length > 1;
+
+    // Couleur de l'input (orange si doublon)
+    const input = document.querySelector(`.step-input[data-idx="${idx}"]`);
+    if (input) input.classList.toggle('dup', isDup);
+
+    // Visibilité du sélecteur de capture
+    const pickDiv = document.getElementById(`pick-${idx}`);
+    if (pickDiv && ev.screenshot) {
+      if (isDup) {
+        pickDiv.classList.add('visible');
+        const radio = pickDiv.querySelector('input[type="radio"]');
+        if (radio) {
+          radio.name = `pick-group-${sn}`;
+          if (_pickedShot[sn] === undefined) _pickedShot[sn] = group[0];
+          radio.checked = (_pickedShot[sn] === idx);
+        }
+      } else {
+        pickDiv.classList.remove('visible');
+        delete _pickedShot[sn];
+      }
     }
   });
+}
+
+// ─── Événements pour export (step nums + sélection captures) ─────────────────
+function getExportEvents(applyFilter = true) {
+  const stepCount = {};
+  _events.forEach((ev, idx) => {
+    if (applyFilter && /filter navigator/i.test(ev.description || '')) return;
+    const sn = _stepNums[idx];
+    stepCount[sn] = (stepCount[sn] || 0) + 1;
+  });
+
+  const result = [];
+  _events.forEach((ev, idx) => {
+    if (applyFilter && /filter navigator/i.test(ev.description || '')) return;
+    const sn = _stepNums[idx];
+    let screenshot = ev.screenshot;
+    if (screenshot && stepCount[sn] > 1) {
+      const picked = _pickedShot[sn] !== undefined ? _pickedShot[sn] : -1;
+      if (picked !== idx) screenshot = null;
+    }
+    result.push({ ...ev, id: sn, screenshot });
+  });
+  return result;
 }
 
 // ─── Lightbox ─────────────────────────────────────────────────────────────────
@@ -164,21 +269,21 @@ async function doExportZip() {
   const zip      = new ZipBuilder();
   const dateStr  = dateSlug();
 
-  const filtered = filterEvents(_events);
+  const exported = getExportEvents();
 
   // DOCX avec template Yunit
   const logoBytes = await fetchLogo();
-  const docxBytes = buildDocx(filtered, _sessionName, logoBytes, _lang);
+  const docxBytes = buildDocx(exported, _sessionName, logoBytes, _lang);
   zip.addFile('rapport.docx', docxBytes);
 
   // HTML autonome
-  zip.addFile('rapport.html', buildHtmlReport(_events, _sessionName));
+  zip.addFile('rapport.html', buildHtmlReport(getExportEvents(false), _sessionName));
 
   // Markdown
-  zip.addFile('rapport.md', buildMarkdown(filtered, _sessionName));
+  zip.addFile('rapport.md', buildMarkdown(exported, _sessionName));
 
   // Excel (.xlsx avec images)
-  zip.addFile('rapport.xlsx', buildXlsx(filtered, _sessionName));
+  zip.addFile('rapport.xlsx', buildXlsx(exported, _sessionName));
 
   // data.json
   zip.addFile('data.json', JSON.stringify({
@@ -188,8 +293,8 @@ async function doExportZip() {
     events: _events.map(e => ({ ...e, screenshot: e.screenshot ? '[base64]' : null }))
   }, null, 2));
 
-  // Screenshots séparés
-  _events.forEach(ev => {
+  // Screenshots séparés (seulement les captures retenues)
+  exported.forEach(ev => {
     if (!ev.screenshot) return;
     const ext = ev.screenshot.startsWith('data:image/png') ? 'png' : 'jpeg';
     zip.addBase64(`screenshots/step-${ev.id}.${ext}`, ev.screenshot);
@@ -201,13 +306,13 @@ async function doExportZip() {
 // ─── Export Word (.docx) ──────────────────────────────────────────────────────
 async function doExportDocx() {
   const logoBytes = await fetchLogo();
-  const bytes     = buildDocx(filterEvents(_events), _sessionName, logoBytes, _lang);
+  const bytes     = buildDocx(getExportEvents(), _sessionName, logoBytes, _lang);
   downloadBlob(bytes, `testtracer-${dateSlug()}.docx`, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
 }
 
 // ─── Export HTML autonome ─────────────────────────────────────────────────────
 function doExportHtml() {
-  const html = buildHtmlReport(_events, _sessionName);
+  const html = buildHtmlReport(getExportEvents(false), _sessionName);
   downloadBlob(
     new TextEncoder().encode(html),
     `testtracer-${dateSlug()}.html`,
@@ -217,7 +322,7 @@ function doExportHtml() {
 
 // ─── Export Markdown ──────────────────────────────────────────────────────────
 function doExportMarkdown() {
-  const md = buildMarkdown(filterEvents(_events), _sessionName);
+  const md = buildMarkdown(getExportEvents(), _sessionName);
   downloadBlob(
     new TextEncoder().encode(md),
     `testtracer-${dateSlug()}.md`,
@@ -228,7 +333,7 @@ function doExportMarkdown() {
 // ─── Export Excel (.xlsx avec images) ────────────────────────────────────────
 function doExportExcel() {
   downloadBlob(
-    buildXlsx(filterEvents(_events), _sessionName),
+    buildXlsx(getExportEvents(), _sessionName),
     `testtracer-${dateSlug()}.xlsx`,
     'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
   );
