@@ -47,6 +47,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('btn-docx').addEventListener('click',  doExportDocx);
   document.getElementById('btn-html').addEventListener('click',  doExportHtml);
   document.getElementById('btn-md').addEventListener('click',    doExportMarkdown);
+  document.getElementById('btn-excel').addEventListener('click', doExportExcel);
   document.getElementById('btn-print').addEventListener('click', () => window.print());
 
   // Lightbox fermeture
@@ -126,16 +127,21 @@ async function doExportZip() {
   const zip      = new ZipBuilder();
   const dateStr  = dateSlug();
 
+  const filtered = filterEvents(_events);
+
   // DOCX avec template Yunit
   const logoBytes = await fetchLogo();
-  const docxBytes = buildDocx(_events, _sessionName, logoBytes);
+  const docxBytes = buildDocx(filtered, _sessionName, logoBytes);
   zip.addFile('rapport.docx', docxBytes);
 
   // HTML autonome
   zip.addFile('rapport.html', buildHtmlReport(_events, _sessionName));
 
   // Markdown
-  zip.addFile('rapport.md', buildMarkdown(_events, _sessionName));
+  zip.addFile('rapport.md', buildMarkdown(filtered, _sessionName));
+
+  // Excel (CSV)
+  zip.addFile('rapport.csv', buildCsv(filtered, _sessionName));
 
   // data.json
   zip.addFile('data.json', JSON.stringify({
@@ -158,7 +164,7 @@ async function doExportZip() {
 // ─── Export Word (.docx) ──────────────────────────────────────────────────────
 async function doExportDocx() {
   const logoBytes = await fetchLogo();
-  const bytes     = buildDocx(_events, _sessionName, logoBytes);
+  const bytes     = buildDocx(filterEvents(_events), _sessionName, logoBytes);
   downloadBlob(bytes, `testtracer-${dateSlug()}.docx`, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
 }
 
@@ -174,11 +180,21 @@ function doExportHtml() {
 
 // ─── Export Markdown ──────────────────────────────────────────────────────────
 function doExportMarkdown() {
-  const md = buildMarkdown(_events, _sessionName);
+  const md = buildMarkdown(filterEvents(_events), _sessionName);
   downloadBlob(
     new TextEncoder().encode(md),
     `testtracer-${dateSlug()}.md`,
     'text/markdown'
+  );
+}
+
+// ─── Export Excel (CSV) ───────────────────────────────────────────────────────
+function doExportExcel() {
+  const csv = buildCsv(filterEvents(_events), _sessionName);
+  downloadBlob(
+    new TextEncoder().encode('\uFEFF' + csv), // BOM UTF-8 pour Excel
+    `testtracer-${dateSlug()}.csv`,
+    'text/csv;charset=utf-8'
   );
 }
 
@@ -256,6 +272,41 @@ function buildMarkdown(events, sessionName) {
   });
 
   return md;
+}
+
+// ─── Filtre "Filter navigator" ────────────────────────────────────────────────
+/**
+ * Exclut les étapes dont la description contient "Filter navigator" (insensible à la casse)
+ * et renuméroté les étapes restantes de façon séquentielle.
+ */
+function filterEvents(events) {
+  let seq = 1;
+  return events
+    .filter(ev => !/filter navigator/i.test(ev.description || ''))
+    .map(ev => ({ ...ev, id: seq++ }));
+}
+
+// ─── Constructeur CSV (Excel) ─────────────────────────────────────────────────
+function buildCsv(events, sessionName) {
+  const date = new Date(_stoppedAt).toLocaleString('fr-FR');
+  const csvEsc = v => `"${String(v || '').replace(/"/g, '""')}"`;
+  const sep = ';';
+
+  let csv = [
+    csvEsc(`Session : ${sessionName}`),
+    csvEsc(`Généré le : ${date} — ${events.length} action(s)`)
+  ].join(sep) + '\n\n';
+
+  csv += ['N°', 'Type', 'Description', 'URL', 'Sélecteur', 'Heure'].map(csvEsc).join(sep) + '\n';
+
+  events.forEach(ev => {
+    const meta = TYPE_META[ev.eventType] || { label: ev.eventType };
+    const time = new Date(ev.timestamp).toLocaleTimeString('fr-FR');
+    csv += [ev.id, meta.label, ev.description, ev.url || '', ev.selector || '', time]
+      .map(csvEsc).join(sep) + '\n';
+  });
+
+  return csv;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
