@@ -220,17 +220,15 @@ function recomputeDuplicates() {
 }
 
 // ─── Événements pour export (step nums + sélection captures) ─────────────────
-function getExportEvents(applyFilter = true) {
+function getExportEvents() {
   const stepCount = {};
   _events.forEach((ev, idx) => {
-    if (applyFilter && /filter navigator/i.test(ev.description || '')) return;
     const sn = _stepNums[idx];
     stepCount[sn] = (stepCount[sn] || 0) + 1;
   });
 
   const result = [];
   _events.forEach((ev, idx) => {
-    if (applyFilter && /filter navigator/i.test(ev.description || '')) return;
     const sn = _stepNums[idx];
     let screenshot = ev.screenshot;
     if (screenshot && stepCount[sn] > 1) {
@@ -277,7 +275,7 @@ async function doExportZip() {
   zip.addFile('rapport.docx', docxBytes);
 
   // HTML autonome
-  zip.addFile('rapport.html', buildHtmlReport(getExportEvents(false), _sessionName));
+  zip.addFile('rapport.html', buildHtmlReport(getExportEvents(), _sessionName));
 
   // Markdown
   zip.addFile('rapport.md', buildMarkdown(exported, _sessionName));
@@ -312,7 +310,7 @@ async function doExportDocx() {
 
 // ─── Export HTML autonome ─────────────────────────────────────────────────────
 function doExportHtml() {
-  const html = buildHtmlReport(getExportEvents(false), _sessionName);
+  const html = buildHtmlReport(getExportEvents(), _sessionName);
   downloadBlob(
     new TextEncoder().encode(html),
     `testtracer-${dateSlug()}.html`,
