@@ -140,8 +140,8 @@ async function doExportZip() {
   // Markdown
   zip.addFile('rapport.md', buildMarkdown(filtered, _sessionName));
 
-  // Excel (CSV)
-  zip.addFile('rapport.csv', buildCsv(filtered, _sessionName));
+  // Excel (.xls avec images)
+  zip.addFile('rapport.xls', buildXls(filtered, _sessionName));
 
   // data.json
   zip.addFile('data.json', JSON.stringify({
@@ -188,13 +188,13 @@ function doExportMarkdown() {
   );
 }
 
-// ─── Export Excel (CSV) ───────────────────────────────────────────────────────
+// ─── Export Excel (.xls avec images) ─────────────────────────────────────────
 function doExportExcel() {
-  const csv = buildCsv(filterEvents(_events), _sessionName);
+  const xls = buildXls(filterEvents(_events), _sessionName);
   downloadBlob(
-    new TextEncoder().encode('\uFEFF' + csv), // BOM UTF-8 pour Excel
-    `testtracer-${dateSlug()}.csv`,
-    'text/csv;charset=utf-8'
+    new TextEncoder().encode(xls),
+    `testtracer-${dateSlug()}.xls`,
+    'application/vnd.ms-excel'
   );
 }
 
@@ -286,27 +286,51 @@ function filterEvents(events) {
     .map(ev => ({ ...ev, id: seq++ }));
 }
 
-// ─── Constructeur CSV (Excel) ─────────────────────────────────────────────────
-function buildCsv(events, sessionName) {
+// ─── Constructeur XLS (HTML-table Excel avec images) ─────────────────────────
+function buildXls(events, sessionName) {
   const date = new Date(_stoppedAt).toLocaleString('fr-FR');
-  const csvEsc = v => `"${String(v || '').replace(/"/g, '""')}"`;
-  const sep = ';';
+  const e = s => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 
-  let csv = [
-    csvEsc(`Session : ${sessionName}`),
-    csvEsc(`Généré le : ${date} — ${events.length} action(s)`)
-  ].join(sep) + '\n\n';
-
-  csv += ['N°', 'Type', 'Description', 'URL', 'Sélecteur', 'Heure'].map(csvEsc).join(sep) + '\n';
-
-  events.forEach(ev => {
+  const rows = events.map(ev => {
     const meta = TYPE_META[ev.eventType] || { label: ev.eventType };
     const time = new Date(ev.timestamp).toLocaleTimeString('fr-FR');
-    csv += [ev.id, meta.label, ev.description, ev.url || '', ev.selector || '', time]
-      .map(csvEsc).join(sep) + '\n';
-  });
+    const img  = ev.screenshot ? `<img src="${ev.screenshot}" width="180">` : '';
+    return `<tr>
+      <td>${ev.id}</td>
+      <td>${e(meta.label)}</td>
+      <td>${e(ev.description)}</td>
+      <td>${e(ev.url || '')}</td>
+      <td>${e(ev.selector || '')}</td>
+      <td>${time}</td>
+      <td>${img}</td>
+    </tr>`;
+  }).join('');
 
-  return csv;
+  return `<html xmlns:o="urn:schemas-microsoft-com:office:office"
+    xmlns:x="urn:schemas-microsoft-com:office:excel"
+    xmlns="http://www.w3.org/TR/REC-html40">
+<head><meta charset="UTF-8">
+<!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets>
+<x:ExcelWorksheet><x:Name>Rapport</x:Name>
+<x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions>
+</x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]-->
+<style>
+  table{border-collapse:collapse;font-family:Arial,sans-serif;font-size:10pt}
+  th{background:#1e3a5f;color:#fff;padding:5px 8px;border:1px solid #999;white-space:nowrap}
+  td{padding:4px 8px;border:1px solid #ccc;vertical-align:middle}
+  tr:nth-child(even) td{background:#f5f5f5}
+  img{display:block;max-width:180px}
+</style>
+</head>
+<body>
+<p><strong>Session : ${e(sessionName)}</strong> — Généré le : ${date} — ${events.length} action(s)</p>
+<table>
+<thead><tr>
+  <th>N°</th><th>Type</th><th>Description</th><th>URL</th><th>Sélecteur</th><th>Heure</th><th>Capture d'écran</th>
+</tr></thead>
+<tbody>${rows}</tbody>
+</table>
+</body></html>`;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
