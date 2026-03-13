@@ -114,7 +114,7 @@ function renderTimeline() {
     card.id = `step-card-${idx}`;
     card.innerHTML = `
       <div class="step-num-col">
-        <input type="number" class="step-input" value="${_stepNums[idx]}" min="1" data-idx="${idx}">
+        <input type="number" class="step-input" value="${_stepNums[idx]}" min="0" data-idx="${idx}">
         ${!isLast ? '<div class="step-line"></div>' : ''}
       </div>
       <div class="step-content">
@@ -154,7 +154,7 @@ function renderTimeline() {
     // Édition du numéro d'étape
     card.querySelector('.step-input').addEventListener('change', function () {
       const val = this.value.trim();
-      if (!val || isNaN(val) || Number(val) < 1) { this.value = _stepNums[idx]; return; }
+      if (val === '' || isNaN(val) || Number(val) < 0) { this.value = _stepNums[idx]; return; }
       _stepNums[idx] = val;
       rebuildStepNav();
       recomputeDuplicates();
@@ -172,11 +172,12 @@ function rebuildStepNav() {
 
   _events.forEach((ev, idx) => {
     const sn  = _stepNums[idx];
+    const excl = sn === '0';
     const a   = document.createElement('a');
-    a.href      = `#step-card-${idx}`;
-    a.className = 'nav-num' + (count[sn] > 1 ? ' dup' : '');
+    a.href      = excl ? '#' : `#step-card-${idx}`;
+    a.className = 'nav-num' + (excl ? ' excluded' : count[sn] > 1 ? ' dup' : '');
     a.textContent = sn;
-    a.title = `${t('step')} ${sn}`;
+    a.title = excl ? 'Ignoré à l\'export' : `${t('step')} ${sn}`;
     nav.appendChild(a);
   });
 }
@@ -196,9 +197,13 @@ function recomputeDuplicates() {
     const group = groups[sn];
     const isDup = group.length > 1;
 
-    // Couleur de l'input (orange si doublon)
+    // Couleur de l'input
+    const isExcluded = sn === '0';
     const input = document.querySelector(`.step-input[data-idx="${idx}"]`);
-    if (input) input.classList.toggle('dup', isDup);
+    if (input) {
+      input.classList.toggle('excluded', isExcluded);
+      input.classList.toggle('dup', !isExcluded && isDup);
+    }
 
     // Visibilité du sélecteur de capture
     const pickDiv = document.getElementById(`pick-${idx}`);
@@ -230,6 +235,7 @@ function getExportEvents() {
   const result = [];
   _events.forEach((ev, idx) => {
     const sn = _stepNums[idx];
+    if (sn === '0') return; // étape ignorée
     let screenshot = ev.screenshot;
     if (screenshot && stepCount[sn] > 1) {
       const picked = _pickedShot[sn] !== undefined ? _pickedShot[sn] : -1;

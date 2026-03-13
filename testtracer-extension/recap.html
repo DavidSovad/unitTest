@@ -101,6 +101,7 @@
     }
     .nav-num:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
     .nav-num.dup { background: var(--orange); border-color: var(--orange); color: #fff; }
+    .nav-num.excluded { background: transparent; border-color: #475569; color: #475569; text-decoration: line-through; pointer-events: none; }
 
     /* ── Input numéro d'étape ─────────────────────────────────────────── */
     .step-input {
@@ -120,6 +121,7 @@
     .step-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
     .step-input:focus { border-color: #93c5fd; background: #1d4ed8; }
     .step-input.dup { background: var(--orange); }
+    .step-input.excluded { background: #475569; opacity: .55; }
 
     /* ── Sélection de capture pour export ────────────────────────────── */
     .screenshot-pick {
