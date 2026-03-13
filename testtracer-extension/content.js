@@ -47,9 +47,9 @@ function attachListeners() {
   // ── Clic gauche ─────────────────────────────────────────────────────────────
   document.addEventListener('click', (e) => {
     if (!_recording || e.button !== 0) return;
-    // Ne pas capturer les clics qui font partie d'un double-clic
     flash(e.target, '#27ae60');
-    sendEvent('click', `Clic sur "${desc(e.target)}"`, e.target);
+    const t = e.target;
+    requestAnimationFrame(() => sendEvent('click', `Clic sur "${desc(t)}"`, t));
   }, { capture: true, passive: true });
 
   // ── Clic droit — mousedown button=2 en CAPTURE (avant tout handler de page) ─
@@ -62,10 +62,12 @@ function attachListeners() {
       if (now - _lastRightClickTime < 300) return; // anti-doublon avec contextmenu
       _lastRightClickTime = now;
       flash(e.target, '#ef4444');
-      sendEvent('right-click', `Clic droit sur "${desc(e.target)}"`, e.target);
+      const t = e.target;
+      requestAnimationFrame(() => sendEvent('right-click', `Clic droit sur "${desc(t)}"`, t));
     } else if (e.button === 1) {
       flash(e.target, '#94a3b8');
-      sendEvent('middle-click', `Clic molette sur "${desc(e.target)}"`, e.target);
+      const t = e.target;
+      requestAnimationFrame(() => sendEvent('middle-click', `Clic molette sur "${desc(t)}"`, t));
     }
   }, { capture: true, passive: true });
 
@@ -76,14 +78,16 @@ function attachListeners() {
     if (now - _lastRightClickTime < 300) return; // déjà capturé par mousedown
     _lastRightClickTime = now;
     flash(e.target, '#ef4444');
-    sendEvent('right-click', `Clic droit sur "${desc(e.target)}"`, e.target);
+    const t = e.target;
+    requestAnimationFrame(() => sendEvent('right-click', `Clic droit sur "${desc(t)}"`, t));
   }, { capture: true });
 
   // ── Double-clic ─────────────────────────────────────────────────────────────
   document.addEventListener('dblclick', (e) => {
     if (!_recording) return;
     flash(e.target, '#f97316');
-    sendEvent('double-click', `Double-clic sur "${desc(e.target)}"`, e.target);
+    const t = e.target;
+    requestAnimationFrame(() => sendEvent('double-click', `Double-clic sur "${desc(t)}"`, t));
   }, { capture: true, passive: true });
 
   // ── Saisie texte (debounce 800ms) ───────────────────────────────────────────
