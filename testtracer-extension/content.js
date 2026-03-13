@@ -47,7 +47,7 @@ function attachListeners() {
   // ── Clic gauche ─────────────────────────────────────────────────────────────
   document.addEventListener('click', (e) => {
     if (!_recording || e.button !== 0) return;
-    flash(e.target, '#27ae60');
+    flash(e.target, '#00bcd4');
     const t = e.target;
     requestAnimationFrame(() => sendEvent('click', `Clic sur "${desc(t)}"`, t));
   }, { capture: true, passive: true });
