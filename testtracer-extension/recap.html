@@ -137,6 +137,34 @@
     .screenshot-pick.visible { display: flex; }
     .screenshot-pick label { display: flex; align-items: center; gap: 5px; cursor: pointer; }
 
+    /* ── Description IA navigation ───────────────────────────────────── */
+    .step-url.nav-desc { color: #34d399; font-style: italic; }
+
+    /* ── Modal clé API ────────────────────────────────────────────────── */
+    .modal-overlay {
+      position: fixed; inset: 0; z-index: 9000;
+      background: rgba(0,0,0,.72);
+      display: flex; align-items: center; justify-content: center;
+    }
+    .modal-box {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 24px;
+      width: 400px;
+      display: flex; flex-direction: column; gap: 14px;
+    }
+    .modal-title { font-size: 16px; font-weight: 700; }
+    .modal-desc  { font-size: 12px; color: var(--muted); line-height: 1.5; }
+    .modal-input {
+      width: 100%; padding: 8px 12px;
+      background: var(--bg); border: 1px solid var(--border);
+      border-radius: 6px; color: var(--text); font-size: 13px; outline: none;
+      font-family: monospace;
+    }
+    .modal-input:focus { border-color: var(--accent); }
+    .modal-actions { display: flex; gap: 8px; justify-content: flex-end; }
+
     /* ── Header session ──────────────────────────────────────────────────── */
     #session-header {
       padding: 28px 24px 16px;
@@ -303,6 +331,7 @@
     <button class="btn-export" id="btn-html">🌐 HTML autonome</button>
     <button class="btn-export" id="btn-md">📝 Markdown</button>
     <button class="btn-export" id="btn-excel">📊 Excel (.csv)</button>
+    <button class="btn-export" id="btn-ai-desc">🤖 Descriptions IA</button>
     <button class="btn-export" id="btn-print">🖨️ Imprimer / PDF</button>
     <div class="lang-toggle">
       <button class="btn-lang active" id="btn-lang-fr">FR</button>
@@ -321,6 +350,20 @@
     <div class="empty-state" id="empty-state" style="display:none">
       <div style="font-size:48px">📭</div>
       <p>Aucun événement enregistré dans cette session.</p>
+    </div>
+  </div>
+
+  <!-- Modal clé API Anthropic -->
+  <div id="api-key-modal" class="modal-overlay" style="display:none">
+    <div class="modal-box">
+      <div class="modal-title">🔑 Clé API Anthropic</div>
+      <p class="modal-desc">Nécessaire pour analyser les captures avec Claude.<br>
+        Elle est stockée localement dans l'extension et n'est jamais envoyée ailleurs.</p>
+      <input type="password" class="modal-input" id="api-key-input" placeholder="sk-ant-api03-…">
+      <div class="modal-actions">
+        <button class="btn-export" id="modal-cancel">Annuler</button>
+        <button class="btn-export primary" id="modal-confirm">Valider</button>
+      </div>
     </div>
   </div>
 

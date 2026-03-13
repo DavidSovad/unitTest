@@ -5,8 +5,10 @@ let _events      = [];
 let _sessionName = '';
 let _stoppedAt   = '';
 let _lang        = 'fr';
-let _stepNums    = []; // _stepNums[idx] = numéro d'étape saisi par l'utilisateur (string)
-let _pickedShot  = {}; // stepNum (string) → eventIdx dont la capture est retenue pour l'export
+let _stepNums      = []; // _stepNums[idx] = numéro d'étape saisi par l'utilisateur (string)
+let _pickedShot    = {}; // stepNum (string) → eventIdx dont la capture est retenue pour l'export
+let _navDesc       = {}; // idx → description IA générée pour les événements de navigation
+let _apiKey        = ''; // clé API Anthropic (chargée depuis chrome.storage.local)
 
 // ─── Internationalisation ─────────────────────────────────────────────────────
 const I18N = {
@@ -98,6 +100,22 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Sélection de langue
   document.getElementById('btn-lang-fr').addEventListener('click', () => setLang('fr'));
   document.getElementById('btn-lang-en').addEventListener('click', () => setLang('en'));
+
+  // Descriptions IA
+  const stored = await chrome.storage.local.get('tt_api_key');
+  _apiKey = stored.tt_api_key || '';
+  document.getElementById('btn-ai-desc').addEventListener('click', generateNavDescriptions);
+  document.getElementById('modal-cancel').addEventListener('click', () => {
+    document.getElementById('api-key-modal').style.display = 'none';
+  });
+  document.getElementById('modal-confirm').addEventListener('click', async () => {
+    const key = document.getElementById('api-key-input').value.trim();
+    if (!key) return;
+    _apiKey = key;
+    await chrome.storage.local.set({ tt_api_key: key });
+    document.getElementById('api-key-modal').style.display = 'none';
+    runNavDescriptions();
+  });
 });
 
 // ─── Rendu de la timeline ────────────────────────────────────────────────────
@@ -124,7 +142,7 @@ function renderTimeline() {
         </div>
         <div class="step-body">
           <div class="step-desc">${esc(ev.description)}</div>
-          ${ev.url ? `<div class="step-url">🔗 ${esc(ev.url)}</div>` : ''}
+          ${ev.url ? `<div class="step-url" id="nav-url-${idx}">🔗 ${esc(ev.url)}</div>` : ''}
           ${ev.selector ? `<span class="step-selector">${esc(ev.selector)}</span>` : ''}
         </div>
         ${ev.screenshot
@@ -249,7 +267,8 @@ function getExportEvents() {
       const picked = _pickedShot[sn] !== undefined ? _pickedShot[sn] : -1;
       if (picked !== idx) screenshot = null;
     }
-    return { ...ev, id: String(seqMap[sn]), screenshot };
+    const url = (ev.eventType === 'navigation' && _navDesc[idx]) ? _navDesc[idx] : ev.url;
+    return { ...ev, id: String(seqMap[sn]), screenshot, url };
   });
 }
 
@@ -431,6 +450,74 @@ function setLang(lang) {
   _lang = lang;
   document.getElementById('btn-lang-fr').classList.toggle('active', lang === 'fr');
   document.getElementById('btn-lang-en').classList.toggle('active', lang === 'en');
+}
+
+// ─── Descriptions IA pour les navigations ────────────────────────────────────
+async function generateNavDescriptions() {
+  if (!_apiKey) {
+    document.getElementById('api-key-input').value = '';
+    document.getElementById('api-key-modal').style.display = 'flex';
+    return;
+  }
+  runNavDescriptions();
+}
+
+async function runNavDescriptions() {
+  const btn = document.getElementById('btn-ai-desc');
+  const targets = _events
+    .map((ev, idx) => ({ ev, idx }))
+    .filter(({ ev }) => ev.eventType === 'navigation' && ev.screenshot);
+
+  if (targets.length === 0) return;
+
+  btn.disabled = true;
+  for (let i = 0; i < targets.length; i++) {
+    const { ev, idx } = targets[i];
+    btn.textContent = `⏳ ${i + 1}/${targets.length}`;
+    try {
+      const desc = await callClaudeVision(ev.screenshot);
+      if (desc) {
+        _navDesc[idx] = desc;
+        const el = document.getElementById(`nav-url-${idx}`);
+        if (el) { el.textContent = `🗺️ ${desc}`; el.classList.add('nav-desc'); }
+      }
+    } catch (e) {
+      console.error(`IA navigation #${idx}:`, e);
+    }
+  }
+  btn.textContent = '🤖 Descriptions IA';
+  btn.disabled = false;
+}
+
+async function callClaudeVision(screenshot) {
+  const match = screenshot.match(/^data:image\/(jpeg|png);base64,(.+)$/s);
+  if (!match) return null;
+  const mediaType = `image/${match[1]}`;
+  const base64Data = match[2];
+  const prompt = _lang === 'fr'
+    ? 'Décris en une courte phrase (max 15 mots) la page ou section affichée dans cette capture. Réponds uniquement avec la description.'
+    : 'Describe in one short phrase (max 15 words) the page or section shown in this screenshot. Respond only with the description.';
+
+  const resp = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': _apiKey,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true'
+    },
+    body: JSON.stringify({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 80,
+      messages: [{ role: 'user', content: [
+        { type: 'image', source: { type: 'base64', media_type: mediaType, data: base64Data } },
+        { type: 'text', text: prompt }
+      ]}]
+    })
+  });
+  if (!resp.ok) throw new Error(`Anthropic API ${resp.status}`);
+  const data = await resp.json();
+  return data.content[0].text.trim();
 }
 
 // ─── Filtre "Filter navigator" ────────────────────────────────────────────────
